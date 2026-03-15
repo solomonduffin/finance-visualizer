@@ -549,3 +549,60 @@ func parseInt64(s string, out *int64) (int64, error) {
 type parseError struct{ s string }
 
 func (e *parseError) Error() string { return "not an integer: " + e.s }
+
+func TestSyncOnce_RemovesStaleAccounts(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// First sync: 2 accounts.
+	accounts1 := []map[string]any{
+		{
+			"id": "acct-001", "name": "My Checking", "currency": "USD",
+			"balance": "1000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank A", "id": "bank-a"},
+		},
+		{
+			"id": "acct-002", "name": "Old Account", "currency": "USD",
+			"balance": "500.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank B", "id": "bank-b"},
+		},
+	}
+	srv1 := newMockServer(t, accounts1)
+	setAccessURL(t, database, srv1.URL+"/simplefin")
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	var count int
+	database.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&count)
+	if count != 2 {
+		t.Fatalf("expected 2 accounts after first sync, got %d", count)
+	}
+
+	// Second sync: only 1 account returned (acct-002 removed from SimpleFIN).
+	accounts2 := []map[string]any{
+		{
+			"id": "acct-001", "name": "My Checking", "currency": "USD",
+			"balance": "1100.00", "balance-date": 1700086400,
+			"org": map[string]any{"name": "Bank A", "id": "bank-a"},
+		},
+	}
+	srv2 := newMockServer(t, accounts2)
+	setAccessURL(t, database, srv2.URL+"/simplefin")
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	// acct-002 should be gone.
+	database.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&count)
+	if count != 1 {
+		t.Errorf("expected 1 account after second sync, got %d", count)
+	}
+
+	// Its snapshots should also be gone.
+	var snapCount int
+	database.QueryRow(`SELECT COUNT(*) FROM balance_snapshots WHERE account_id='acct-002'`).Scan(&snapCount)
+	if snapCount != 0 {
+		t.Errorf("expected 0 snapshots for removed account, got %d", snapCount)
+	}
+}

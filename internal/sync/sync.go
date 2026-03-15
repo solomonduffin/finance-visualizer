@@ -128,6 +128,7 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 
 	fetched := 0
 	failed := 0
+	seenIDs := make([]string, 0, len(accountSet.Accounts))
 
 	for _, acct := range accountSet.Accounts {
 		if err := processAccount(ctx, db, acct); err != nil {
@@ -135,7 +136,18 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 			failed++
 			continue
 		}
+		seenIDs = append(seenIDs, acct.ID)
 		fetched++
+	}
+
+	// Remove accounts no longer returned by SimpleFIN.
+	if len(seenIDs) > 0 {
+		removed, err := removeStaleAccounts(ctx, db, seenIDs)
+		if err != nil {
+			slog.Warn("sync: stale account cleanup failed", "err", err)
+		} else if removed > 0 {
+			slog.Info("sync: removed stale accounts", "count", removed)
+		}
 	}
 
 	finalize(fetched, failed, nil)
@@ -179,6 +191,34 @@ func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) err
 	}
 
 	return nil
+}
+
+// removeStaleAccounts deletes accounts (and their snapshots) that were not
+// returned by the latest SimpleFIN fetch. Returns the number of accounts removed.
+func removeStaleAccounts(ctx context.Context, db *sql.DB, seenIDs []string) (int64, error) {
+	placeholders := make([]string, len(seenIDs))
+	args := make([]interface{}, len(seenIDs))
+	for i, id := range seenIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// Delete orphaned snapshots first (foreign key safety).
+	_, err := db.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM balance_snapshots WHERE account_id NOT IN (%s)`, inClause),
+		args...)
+	if err != nil {
+		return 0, fmt.Errorf("delete stale snapshots: %w", err)
+	}
+
+	res, err := db.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM accounts WHERE id NOT IN (%s)`, inClause),
+		args...)
+	if err != nil {
+		return 0, fmt.Errorf("delete stale accounts: %w", err)
+	}
+	return res.RowsAffected()
 }
 
 // RunScheduler runs SyncOnce once per day at syncHour (0-23, local time).
