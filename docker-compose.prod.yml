@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: .
+      target: prod
+    environment:
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET}
+      - PASSWORD_HASH=${PASSWORD_HASH}
+      - DB_PATH=/data/finance.db
+    volumes:
+      - sqlite_data:/data
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      target: nginx-prod
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:

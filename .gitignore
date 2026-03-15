@@ -1,0 +1,20 @@
+# Go
+/data/
+*.db
+*.db-wal
+*.db-shm
+tmp/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Env
+.env
+
+# Build artifacts
+server

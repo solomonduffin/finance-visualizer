@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: .
+      target: dev
+    command: air
+    volumes:
+      - .:/app
+      - sqlite_data:/data
+    environment:
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET}
+      - PASSWORD=${PASSWORD}
+      - DB_PATH=/data/finance.db
+    depends_on: []
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on: []
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  sqlite_data:
