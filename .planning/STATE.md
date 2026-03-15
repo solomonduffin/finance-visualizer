@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-foundation-01-PLAN.md
-last_updated: "2026-03-15T02:01:21.310Z"
+stopped_at: Completed 01-foundation-02-PLAN.md
+last_updated: "2026-03-15T02:08:48.168Z"
 last_activity: 2026-03-15 — Roadmap created, ready for phase planning
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -51,6 +51,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-foundation P01 | 4 | 2 tasks | 12 files |
+| Phase 01-foundation P02 | 360 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,9 @@ Recent decisions affecting current work:
 - [Phase 01-foundation]: Use sqlite.RegisterConnectionHook (not DSN pragmas) to set WAL+busy_timeout+foreign_keys — applies to all pooled connections
 - [Phase 01-foundation]: Migrations in internal/db/migrations/ for clean go:embed from db package
 - [Phase 01-foundation]: Support both PASSWORD (hash at startup) and PASSWORD_HASH (use directly) for operator flexibility
+- [Phase 01-foundation]: JWT cookie must be named 'jwt' exactly — jwtauth.TokenFromCookie requires this name
+- [Phase 01-foundation]: Login handler queries settings table for password_hash at request time, not from in-memory config
+- [Phase 01-foundation]: Test helpers use temp file DB (t.TempDir) — db.Migrate opens its own connection so :memory: would migrate a separate empty DB
 
 ### Pending Todos
 
@@ -78,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T02:01:21.309Z
-Stopped at: Completed 01-foundation-01-PLAN.md
+Last session: 2026-03-15T02:08:48.167Z
+Stopped at: Completed 01-foundation-02-PLAN.md
 Resume file: None
