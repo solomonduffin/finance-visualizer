@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: "Paused at checkpoint 01-03 Task 3: Human verification of full stack end-to-end"
-last_updated: "2026-03-15T02:15:25.747Z"
+stopped_at: Completed 01-foundation-03-PLAN.md — Phase 1 complete
+last_updated: "2026-03-15T02:53:38.761Z"
 last_activity: 2026-03-15 — Roadmap created, ready for phase planning
 progress:
   total_phases: 4
@@ -30,7 +30,7 @@ Plan: 0 of TBD in current phase
 Status: Ready to plan
 Last activity: 2026-03-15 — Roadmap created, ready for phase planning
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100% (Phase 1 of 4 complete)
 
 ## Performance Metrics
 
@@ -52,7 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 01-foundation P01 | 4 | 2 tasks | 12 files |
 | Phase 01-foundation P02 | 360 | 2 tasks | 10 files |
-| Phase 01-foundation P03 | 4 | 2 tasks | 18 files |
+| Phase 01-foundation P03 | 40 | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -73,6 +73,10 @@ Recent decisions affecting current work:
 - [Phase 01-foundation]: Test helpers use temp file DB (t.TempDir) — db.Migrate opens its own connection so :memory: would migrate a separate empty DB
 - [Phase 01-foundation]: Tailwind v4 CSS-first config (@import 'tailwindcss') — no tailwind.config.js required, handled by @tailwindcss/vite plugin
 - [Phase 01-foundation]: Nginx WebSocket upgrade headers (Upgrade, Connection:Upgrade, proxy_http_version 1.1) required on / location for Vite HMR through Docker network
+- [Phase 01-foundation]: Vite 7 used instead of 8 — @tailwindcss/vite incompatible with Vite 8 at execution time
+- [Phase 01-foundation]: Air -buildvcs=false required — Go 1.25 enforces VCS stamping which fails in Docker build context without .git
+- [Phase 01-foundation]: golang:1.25-alpine used — golang:1.23-alpine tag unavailable on Docker Hub at execution time
+- [Phase 01-foundation]: Frontend compose command runs npm install before npm run dev — bind mount overwrites node_modules from image
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T02:15:25.746Z
-Stopped at: Paused at checkpoint 01-03 Task 3: Human verification of full stack end-to-end
+Last session: 2026-03-15T02:53:38.759Z
+Stopped at: Completed 01-foundation-03-PLAN.md — Phase 1 complete
 Resume file: None
