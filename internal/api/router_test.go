@@ -120,6 +120,63 @@ func TestProtectedRoute_ExpiredToken(t *testing.T) {
 	}
 }
 
+func TestSettingsRoute_NoAuth(t *testing.T) {
+	auth.Init(testSecret)
+	database := setupRouterTestDB(t)
+	router := api.NewRouter(auth.TokenAuth(), database)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without auth on GET /api/settings, got %d", w.Code)
+	}
+}
+
+func TestSettingsRoute_WithAuth(t *testing.T) {
+	auth.Init(testSecret)
+	database := setupRouterTestDB(t)
+	router := api.NewRouter(auth.TokenAuth(), database)
+
+	// Login first to get a JWT cookie
+	loginBody := strings.NewReader(`{"password":"` + testPassword + `"}`)
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", loginBody)
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	if loginW.Code != http.StatusOK {
+		t.Fatalf("login failed with status %d", loginW.Code)
+	}
+
+	var jwtCookie *http.Cookie
+	for _, c := range loginW.Result().Cookies() {
+		if c.Name == "jwt" {
+			jwtCookie = c
+			break
+		}
+	}
+	if jwtCookie == nil {
+		t.Fatal("no jwt cookie returned from login")
+	}
+
+	// Access settings with valid JWT
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.AddCookie(jwtCookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 on GET /api/settings with auth, got %d", w.Code)
+	}
+
+	// Response must contain "configured" field
+	body := w.Body.String()
+	if !strings.Contains(body, "configured") {
+		t.Errorf("expected 'configured' field in response body, got: %s", body)
+	}
+}
+
 func TestLoginRateLimit(t *testing.T) {
 	auth.Init(testSecret)
 	database := setupRouterTestDB(t)

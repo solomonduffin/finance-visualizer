@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -12,6 +15,7 @@ import (
 	"github.com/solomon/finance-visualizer/internal/auth"
 	"github.com/solomon/finance-visualizer/internal/config"
 	"github.com/solomon/finance-visualizer/internal/db"
+	gosync "github.com/solomon/finance-visualizer/internal/sync"
 )
 
 func main() {
@@ -67,12 +71,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create a cancellable context tied to OS signals for graceful shutdown.
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	// Initialize the JWT auth package with the secret key.
 	auth.Init(cfg.JWTSecret)
 	slog.Info("auth initialized")
 
 	// Create the chi router with all middleware and routes.
 	router := api.NewRouter(auth.TokenAuth(), database)
+
+	// Start the daily sync scheduler goroutine.
+	go gosync.RunScheduler(ctx, cfg.SyncHour, database)
+	slog.Info("sync scheduler started", "hour", cfg.SyncHour)
 
 	// Start the HTTP server.
 	addr := ":" + cfg.Port

@@ -49,6 +49,9 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
 		r.Use(jwtauth.Verifier(tokenAuth))
 		r.Use(jwtauth.Authenticator(tokenAuth))
 		r.Get("/api/health", handlers.Health)
+		r.Get("/api/settings", handlers.GetSettings(database))
+		r.Post("/api/settings", handlers.SaveSettings(database))
+		r.Post("/api/sync/now", handlers.SyncNow(database))
 	})
 
 	return r
