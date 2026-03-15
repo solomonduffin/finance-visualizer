@@ -12,7 +12,7 @@ Four phases build up the stack in dependency order: the foundation establishes t
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - SQLite schema with migrations, bcrypt auth, JWT middleware, and Docker dev environment
+- [x] **Phase 1: Foundation** - SQLite schema with migrations, bcrypt auth, JWT middleware, and Docker dev environment (completed 2026-03-15)
 - [ ] **Phase 2: Data Pipeline** - SimpleFIN HTTP client, daily cron goroutine, append-only snapshot storage
 - [ ] **Phase 3: Backend API** - Full REST API (accounts, balances, net worth, sync status) with layered service architecture
 - [ ] **Phase 4: Frontend Dashboard** - React SPA with liquid/savings/investments panels, charts, and UX polish
@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `docker compose up` starts the full stack (Go backend, React frontend, Nginx) with no manual steps
   4. SQLite database initializes with all tables via golang-migrate on first start
   5. WAL mode is active and concurrent reads are not blocked during writes
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 01-01-PLAN.md — Go scaffold, SQLite connection with WAL mode, migrations with full upfront schema, config management
@@ -79,7 +79,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/3 | In Progress|  |
+| 1. Foundation | 3/3 | Complete   | 2026-03-15 |
 | 2. Data Pipeline | 0/TBD | Not started | - |
 | 3. Backend API | 0/TBD | Not started | - |
 | 4. Frontend Dashboard | 0/TBD | Not started | - |
