@@ -23,8 +23,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Visualizations
 
-- [ ] **VIZ-01**: Balance-over-time line chart for each panel (liquid, savings, investments)
-- [ ] **VIZ-02**: Net worth breakdown pie/donut chart (liquid vs savings vs investments)
+- [x] **VIZ-01**: Balance-over-time line chart for each panel (liquid, savings, investments)
+- [x] **VIZ-02**: Net worth breakdown pie/donut chart (liquid vs savings vs investments)
 
 ### Auth & UX
 
@@ -85,8 +85,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-02 | Phase 3 | Complete |
 | DASH-03 | Phase 3 | Complete |
 | DASH-04 | Phase 3 | Complete |
-| VIZ-01 | Phase 4 | Pending |
-| VIZ-02 | Phase 4 | Pending |
+| VIZ-01 | Phase 4 | Complete |
+| VIZ-02 | Phase 4 | Complete |
 | UX-01 | Phase 4 | Complete |
 | UX-02 | Phase 4 | Complete |
 | UX-03 | Phase 4 | Complete |

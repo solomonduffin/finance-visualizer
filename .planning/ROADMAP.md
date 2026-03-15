@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - SQLite schema with migrations, bcrypt auth, JWT middleware, and Docker dev environment (completed 2026-03-15)
 - [x] **Phase 2: Data Pipeline** - SimpleFIN HTTP client, daily cron goroutine, append-only snapshot storage (completed 2026-03-15)
 - [x] **Phase 3: Backend API** - Full REST API (accounts, balances, net worth, sync status) with layered service architecture (completed 2026-03-15)
-- [ ] **Phase 4: Frontend Dashboard** - React SPA with liquid/savings/investments panels, charts, and UX polish
+- [x] **Phase 4: Frontend Dashboard** - React SPA with liquid/savings/investments panels, charts, and UX polish (completed 2026-03-15)
 
 ## Phase Details
 
@@ -79,7 +79,7 @@ Plans:
   4. A "Last updated" indicator shows how long ago the most recent sync ran
   5. Before the first sync completes, the app shows a clear empty/loading state rather than blank panels or errors
   6. The user can toggle between dark and light mode, and the layout is usable on a mobile screen
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 04-01-PLAN.md — Dark mode infrastructure, API client extensions, reusable components (PanelCard, SkeletonDashboard, EmptyState), utilities
@@ -96,4 +96,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
 | 2. Data Pipeline | 3/3 | Complete   | 2026-03-15 |
 | 3. Backend API | 2/2 | Complete   | 2026-03-15 |
-| 4. Frontend Dashboard | 2/3 | In Progress|  |
+| 4. Frontend Dashboard | 3/3 | Complete   | 2026-03-15 |
