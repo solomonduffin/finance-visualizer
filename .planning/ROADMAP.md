@@ -2,7 +2,12 @@
 
 ## Overview
 
-Four phases build up the stack in dependency order: the foundation establishes the schema, auth, and Docker skeleton before any feature code touches them; the data pipeline wires SimpleFIN and proves real data flows into SQLite; the backend API exposes that data as a typed REST contract; the React frontend consumes the API and delivers the complete dashboard experience. Each phase is fully testable before the next begins.
+The v1.0 milestone (Phases 1-4) established the full stack: SQLite schema, SimpleFIN data pipeline, REST API, and React dashboard with panels and charts. The v1.1 milestone (Phases 5-9) extends the product with account management, operational visibility, analytics depth, threshold-based alerts with email notifications, and forward-looking financial projections. Phase ordering is driven by a hard dependency chain: soft-delete and display_name (Phase 5) must exist before any feature that stores per-account user configuration.
+
+## Milestones
+
+- Shipped **v1.0 MVP** - Phases 1-4 (shipped 2026-03-15)
+- Active **v1.1 Enhancements** - Phases 5-9 (in progress)
 
 ## Phases
 
@@ -12,12 +17,28 @@ Four phases build up the stack in dependency order: the foundation establishes t
 
 Decimal phases appear between their surrounding integers in numeric order.
 
+<details>
+<summary>v1.0 MVP (Phases 1-4) - SHIPPED 2026-03-15</summary>
+
 - [x] **Phase 1: Foundation** - SQLite schema with migrations, bcrypt auth, JWT middleware, and Docker dev environment (completed 2026-03-15)
 - [x] **Phase 2: Data Pipeline** - SimpleFIN HTTP client, daily cron goroutine, append-only snapshot storage (completed 2026-03-15)
 - [x] **Phase 3: Backend API** - Full REST API (accounts, balances, net worth, sync status) with layered service architecture (completed 2026-03-15)
 - [x] **Phase 4: Frontend Dashboard** - React SPA with liquid/savings/investments panels, charts, and UX polish (completed 2026-03-15)
 
+</details>
+
+### v1.1 Enhancements
+
+- [ ] **Phase 5: Data Foundation** - Soft-delete migration and account display name system (schema prerequisites for all v1.1 features)
+- [ ] **Phase 6: Operational Quick Wins** - Sync failure diagnostics in settings and growth rate indicators on panel cards
+- [ ] **Phase 7: Analytics Expansion** - Crypto account aggregation by institution and dedicated net worth drill-down page
+- [ ] **Phase 8: Alert System** - Expression-based alert rules with 3-state machine and email notifications via SMTP
+- [ ] **Phase 9: Projection Engine** - Forward-looking net worth projections with per-account APY, reinvestment, and income modeling
+
 ## Phase Details
+
+<details>
+<summary>v1.0 MVP (Phases 1-4) - SHIPPED 2026-03-15</summary>
 
 ### Phase 1: Foundation
 **Goal**: Users can authenticate into a running app backed by a correct, migration-managed SQLite schema
@@ -49,9 +70,9 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 02-01-PLAN.md — SimpleFIN HTTP client + sync orchestration engine (SyncOnce, RunScheduler, account upsert, idempotent snapshots)
-- [ ] 02-02-PLAN.md — Settings/sync API handlers, config extension (SYNC_HOUR), router wiring, scheduler goroutine in main.go
-- [ ] 02-03-PLAN.md — React settings page (token config, sync status, Sync Now button), client-side routing with react-router-dom
+- [x] 02-01-PLAN.md — SimpleFIN HTTP client + sync orchestration engine (SyncOnce, RunScheduler, account upsert, idempotent snapshots)
+- [x] 02-02-PLAN.md — Settings/sync API handlers, config extension (SYNC_HOUR), router wiring, scheduler goroutine in main.go
+- [x] 02-03-PLAN.md — React settings page (token config, sync status, Sync Now button), client-side routing with react-router-dom
 
 ### Phase 3: Backend API
 **Goal**: All financial data in SQLite is accessible via a typed, authenticated REST API that the frontend can consume
@@ -65,8 +86,8 @@ Plans:
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 03-01-PLAN.md — Summary and accounts handlers (GET /api/summary with panel totals, GET /api/accounts with grouped account lists)
-- [ ] 03-02-PLAN.md — Balance history handler (GET /api/balance-history with per-panel time series) and route wiring for all three endpoints
+- [x] 03-01-PLAN.md — Summary and accounts handlers (GET /api/summary with panel totals, GET /api/accounts with grouped account lists)
+- [x] 03-02-PLAN.md — Balance history handler (GET /api/balance-history with per-panel time series) and route wiring for all three endpoints
 
 ### Phase 4: Frontend Dashboard
 **Goal**: The user sees a complete, polished finance dashboard with all panels, charts, and UX details in one glance
@@ -82,18 +103,84 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 04-01-PLAN.md — Dark mode infrastructure, API client extensions, reusable components (PanelCard, SkeletonDashboard, EmptyState), utilities
-- [ ] 04-02-PLAN.md — Dashboard page with data fetching, panel rendering, freshness indicator, loading/empty/error states, NavBar dark mode toggle
-- [ ] 04-03-PLAN.md — Balance line chart (tabbed AreaChart) and net worth donut chart, wired into Dashboard with visual verification
+- [x] 04-01-PLAN.md — Dark mode infrastructure, API client extensions, reusable components (PanelCard, SkeletonDashboard, EmptyState), utilities
+- [x] 04-02-PLAN.md — Dashboard page with data fetching, panel rendering, freshness indicator, loading/empty/error states, NavBar dark mode toggle
+- [x] 04-03-PLAN.md — Balance line chart (tabbed AreaChart) and net worth donut chart, wired into Dashboard with visual verification
+
+</details>
+
+### Phase 5: Data Foundation
+**Goal**: Accounts survive SimpleFIN outages with all user-owned metadata intact, and users can rename any account with a display name that appears globally
+**Depends on**: Phase 4 (v1.0 complete)
+**Requirements**: ACCT-01, ACCT-02, OPS-03
+**Success Criteria** (what must be TRUE):
+  1. User can set a custom display name for any account in the settings page, and it persists across sessions
+  2. Custom display names appear everywhere the account is shown: dashboard panels, charts, and any future dropdowns
+  3. When a connected account disappears from SimpleFIN (outage or removal), the account is hidden rather than deleted, preserving its display name and balance history
+  4. When a previously hidden account reappears in a subsequent sync, it is automatically restored with all its metadata intact
+**Plans**: TBD
+
+### Phase 6: Operational Quick Wins
+**Goal**: Users can diagnose sync problems from the settings UI and see at-a-glance growth trends on every panel card
+**Depends on**: Phase 5
+**Requirements**: OPS-01, OPS-02, INSIGHT-01, INSIGHT-06
+**Success Criteria** (what must be TRUE):
+  1. Settings page shows a log of recent sync attempts with timestamps, success/failure status, and how many accounts were synced
+  2. Failed sync entries can be expanded to reveal sanitized error details (no credentials or tokens leaked)
+  3. Each panel card (liquid, savings, investments) shows a percentage change badge over the last 30 days with green for positive and red for negative
+  4. User can toggle the growth rate badge on/off from the settings page
+**Plans**: TBD
+
+### Phase 7: Analytics Expansion
+**Goal**: Crypto investors see aggregated institution-level balances instead of fragmented wallet lines, and all users can explore detailed net worth history on a dedicated page
+**Depends on**: Phase 5
+**Requirements**: ACCT-03, ACCT-04, ACCT-05, INSIGHT-02, INSIGHT-03, INSIGHT-04, INSIGHT-05
+**Success Criteria** (what must be TRUE):
+  1. Multiple crypto accounts from the same institution (e.g., three Coinbase wallets) appear as a single combined line in the investments panel
+  2. The aggregated crypto entry shows a combined balance history line on the investments chart
+  3. User can expand an aggregated crypto entry to see the individual wallet balances beneath it
+  4. Clicking the net worth donut chart navigates to a dedicated net worth page
+  5. The net worth page shows a historical line chart with per-panel breakdown, summary statistics (current value, period change in dollars and percent, all-time high), and a time range selector (30d, 90d, 6m, 1y, all)
+**Plans**: TBD
+
+### Phase 8: Alert System
+**Goal**: Users define threshold-based alert rules that fire an email exactly once when crossed and once when recovered, with full SMTP configuration in settings
+**Depends on**: Phase 5
+**Requirements**: ALERT-01, ALERT-02, ALERT-03, ALERT-04, ALERT-05, ALERT-06, ALERT-07
+**Success Criteria** (what must be TRUE):
+  1. User can create an alert rule using an expression builder that combines buckets (liquid, savings, investments) and/or individual accounts with arithmetic, compared against a threshold
+  2. When a sync causes a rule's computed value to cross its threshold, the user receives exactly one email notification with rule name, computed value, threshold, and crossing direction
+  3. When the value recovers back across the threshold, the user receives exactly one recovery email (no repeated alerts on subsequent syncs while the condition holds)
+  4. User can configure SMTP or API email provider in settings and verify it works with a test email button
+  5. User can create, edit, enable/disable, and delete alert rules from a dedicated alerts management page
+**Plans**: TBD
+
+### Phase 9: Projection Engine
+**Goal**: Users see a forward-looking net worth projection chart driven by per-account growth rates, compound/simple interest toggle, and income allocation modeling
+**Depends on**: Phase 5
+**Requirements**: PROJ-01, PROJ-02, PROJ-03, PROJ-04, PROJ-05, PROJ-06, PROJ-07, PROJ-08
+**Success Criteria** (what must be TRUE):
+  1. User can set APY or expected growth rate per account, toggle between compound and simple interest, and include/exclude individual accounts from the projection
+  2. User can model income by entering annual amount, monthly savings percentage, and allocating savings across accounts
+  3. A projection chart shows projected net worth over a user-selected time horizon with a dashed line distinguishing projected from historical values
+  4. All projection settings (rates, toggles, income allocations) persist in the database across sessions
+  5. The projections page is accessible from the main navigation and investment accounts display available holdings detail from SimpleFIN where supported
+**Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
+(Phases 6, 7, 8, 9 all depend on Phase 5 but are independent of each other.)
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation | 3/3 | Complete   | 2026-03-15 |
-| 2. Data Pipeline | 3/3 | Complete   | 2026-03-15 |
-| 3. Backend API | 2/2 | Complete   | 2026-03-15 |
-| 4. Frontend Dashboard | 3/3 | Complete   | 2026-03-15 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Foundation | v1.0 | 3/3 | Complete | 2026-03-15 |
+| 2. Data Pipeline | v1.0 | 3/3 | Complete | 2026-03-15 |
+| 3. Backend API | v1.0 | 2/2 | Complete | 2026-03-15 |
+| 4. Frontend Dashboard | v1.0 | 3/3 | Complete | 2026-03-15 |
+| 5. Data Foundation | v1.1 | 0/? | Not started | - |
+| 6. Operational Quick Wins | v1.1 | 0/? | Not started | - |
+| 7. Analytics Expansion | v1.1 | 0/? | Not started | - |
+| 8. Alert System | v1.1 | 0/? | Not started | - |
+| 9. Projection Engine | v1.1 | 0/? | Not started | - |

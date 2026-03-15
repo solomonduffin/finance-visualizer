@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
-status: planning
+status: roadmap_complete
 stopped_at: null
-last_updated: "2026-03-15T19:00:00.000Z"
-last_activity: 2026-03-15 — Milestone v1.1 started, defining requirements
+last_updated: "2026-03-15T20:00:00.000Z"
+last_activity: 2026-03-15 — Roadmap created for v1.1 (Phases 5-9)
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,47 +21,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
-**Current focus:** Milestone v1.1 — Defining requirements
+**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-15 — Milestone v1.1 started
+Phase: 5 of 9 (Data Foundation)
+Plan: Not yet planned
+Status: Ready to plan
+Last activity: 2026-03-15 — Roadmap created for v1.1 Enhancements (Phases 5-9, 28 requirements)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [##########░░░░░░░░░░] 44% (v1.0 complete, v1.1 starting)
 
 ## Performance Metrics
 
-**Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+**Velocity (v1.0):**
+- Total plans completed: 11
+- Total execution time: ~10.5 hours
+- Average duration: ~57 min/plan
 
-**By Phase:**
+**By Phase (v1.0):**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
-
-**Recent Trend:**
-- Last 5 plans: —
-- Trend: —
+| 01 Foundation | 3 | ~6.7h | ~134min |
+| 02 Data Pipeline | 3 | ~36min | ~12min |
+| 03 Backend API | 2 | ~7min | ~3.5min |
+| 04 Frontend Dashboard | 3 | ~3.7h | ~74min |
 
 *Updated after each plan completion*
-| Phase 01-foundation P01 | 4 | 2 tasks | 12 files |
-| Phase 01-foundation P02 | 360 | 2 tasks | 10 files |
-| Phase 01-foundation P03 | 40 | 3 tasks | 21 files |
-| Phase 02-data-pipeline P01 | 3 | 2 tasks | 5 files |
-| Phase 02-data-pipeline P02 | 3 | 2 tasks | 8 files |
-| Phase 02-data-pipeline P03 | 30 | 3 tasks | 10 files |
-| Phase 03-backend-api P01 | 4 | 2 tasks | 4 files |
-| Phase 03-backend-api P02 | 3 | 2 tasks | 3 files |
-| Phase 04-frontend-dashboard P01 | 2 | 2 tasks | 19 files |
-| Phase 04-frontend-dashboard P02 | 164 | 2 tasks | 4 files |
-| Phase 04-frontend-dashboard P03 | 14 | 2 tasks | 6 files |
-| Phase 04-frontend-dashboard P03 | 41 | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -70,45 +57,11 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Pre-planning]: Use modernc.org/sqlite (not mattn/go-sqlite3) — required for CGo-free Docker builds
-- [Pre-planning]: SQLite WAL mode must be set at connection open time — one-line fix, hard to debug if missed
-- [Pre-planning]: Use shopspring/decimal for all financial values — float64 binary precision errors accumulate
-- [Pre-planning]: SimpleFIN `balance` field used directly for liquid balance — do not add pending transaction amounts on top (validate against real account on first sync)
-- [Phase 01-foundation]: Use sqlite.RegisterConnectionHook (not DSN pragmas) to set WAL+busy_timeout+foreign_keys — applies to all pooled connections
-- [Phase 01-foundation]: Migrations in internal/db/migrations/ for clean go:embed from db package
-- [Phase 01-foundation]: Support both PASSWORD (hash at startup) and PASSWORD_HASH (use directly) for operator flexibility
-- [Phase 01-foundation]: JWT cookie must be named 'jwt' exactly — jwtauth.TokenFromCookie requires this name
-- [Phase 01-foundation]: Login handler queries settings table for password_hash at request time, not from in-memory config
-- [Phase 01-foundation]: Test helpers use temp file DB (t.TempDir) — db.Migrate opens its own connection so :memory: would migrate a separate empty DB
-- [Phase 01-foundation]: Tailwind v4 CSS-first config (@import 'tailwindcss') — no tailwind.config.js required, handled by @tailwindcss/vite plugin
-- [Phase 01-foundation]: Nginx WebSocket upgrade headers (Upgrade, Connection:Upgrade, proxy_http_version 1.1) required on / location for Vite HMR through Docker network
-- [Phase 01-foundation]: Vite 7 used instead of 8 — @tailwindcss/vite incompatible with Vite 8 at execution time
-- [Phase 01-foundation]: Air -buildvcs=false required — Go 1.25 enforces VCS stamping which fails in Docker build context without .git
-- [Phase 01-foundation]: golang:1.25-alpine used — golang:1.23-alpine tag unavailable on Docker Hub at execution time
-- [Phase 01-foundation]: Frontend compose command runs npm install before npm run dev — bind mount overwrites node_modules from image
-- [Phase 02-data-pipeline]: InferAccountType and NextRunTime exported for direct testing; decimal used for balance validation only, not arithmetic
-- [Phase 02-data-pipeline]: syncMu is package-level not struct-level; shopspring/decimal promoted to direct dependency in go.mod
-- [Phase 02-data-pipeline]: Use context.Background() for background SyncOnce goroutines from HTTP handlers — HTTP request context cancels on response completion, aborting in-flight sync
-- [Phase 02-data-pipeline]: signal.NotifyContext for graceful shutdown — scheduler goroutine stops cleanly on SIGINT/SIGTERM
-- [Phase 02-data-pipeline]: react-router-dom v7 for client-side routing between Dashboard and Settings
-- [Phase 02-data-pipeline]: ClaimSetupToken exchanges base64 setup tokens for access URLs; IsSetupToken auto-detects input type
-- [Phase 02-data-pipeline]: SyncOnce appends /accounts to stored access URL per SimpleFIN spec
-- [Phase 03-backend-api]: investment account type maps to 'investments' JSON key (plural) in GetAccounts response
-- [Phase 03-backend-api]: GetAccounts empty groups pre-initialized as []accountItem{} (not nil) to ensure JSON '[]' not 'null'
-- [Phase 03-backend-api]: GetSummary uses StringFixed(2) for all decimal outputs — zero is '0.00' not '0'
-- [Phase 03-backend-api]: DATE() applied to balance_date in SQL to normalize datetime to YYYY-MM-DD string
-- [Phase 03-backend-api]: hasChecking/hasCredit bool flags prevent phantom zero entries for days with no panel data
-- [Phase 03-backend-api]: Single-pass accumulator map pattern used in GetBalanceHistory for efficient per-day aggregation
-- [Phase 04-frontend-dashboard]: Named exports for all new components (PanelCard, SkeletonDashboard, EmptyState) — consistent with existing codebase pattern
-- [Phase 04-frontend-dashboard]: Tailwind v4 @custom-variant dark (&:where(.dark, .dark *)) — applies dark styles to any element inside .dark
-- [Phase 04-frontend-dashboard]: No window.matchMedia detection in useDarkMode — manual toggle only per plan spec
-- [Phase 04-frontend-dashboard]: Dashboard uses useCallback for fetchData so useEffect dependency array is stable
-- [Phase 04-frontend-dashboard]: Inline SVG icons in App.tsx for sun/moon toggle — no icon library dependency needed
-- [Phase 04-frontend-dashboard]: Export prepareChartData from BalanceLineChart for direct unit testing without recharts dependency
-- [Phase 04-frontend-dashboard]: useDarkMode called inside Dashboard (not App) — two independent hook instances read same localStorage, avoids prop drilling
-- [Phase 04-frontend-dashboard]: /api/accounts merges checking+credit into liquid key to align with frontend panel model
-- [Phase 04-frontend-dashboard]: InferAccountType: sapphire and platinum keywords added; org_name threaded to PanelCard for institution context
-- [Phase 04-frontend-dashboard]: SyncOnce deletes stale accounts not present in latest SimpleFIN response to prevent orphaned data
+- [v1.0]: SyncOnce deletes stale accounts not in latest SimpleFIN response -- must convert to soft-delete in Phase 5
+- [v1.0]: COALESCE(display_name, name) pattern identified for all account queries once display_name column exists
+- [v1.0]: Use shopspring/decimal for all financial arithmetic -- applies to growth indicators and projections
+- [v1.1 research]: expr-lang/expr for alert expression evaluation, react-querybuilder for alert rule builder UI
+- [v1.1 research]: go-mail v0.7.1 for SMTP email -- only maintained Go SMTP library with STARTTLS
 
 ### Pending Todos
 
@@ -116,11 +69,12 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 2]: SimpleFIN `balance-date` field semantics and rate limit behavior need verification against current SimpleFIN protocol spec before implementing the cron worker
-- [Phase 2]: No mature Go SimpleFIN library exists; custom ~80-line client required
+- [Phase 8]: Protonmail Bridge Docker networking needs validation during planning
+- [Phase 8]: react-querybuilder JSON output to expr-lang input alignment needs confirmation
+- [Phase 6]: Credit card balance sign semantics in growth indicators (negative to less-negative is improvement)
 
 ## Session Continuity
 
-Last session: 2026-03-15T17:16:29.353Z
-Stopped at: Completed 04-frontend-dashboard-03-PLAN.md
+Last session: 2026-03-15T20:00:00.000Z
+Stopped at: Roadmap created for v1.1 milestone
 Resume file: None

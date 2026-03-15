@@ -57,6 +57,7 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 - [ ] **INSIGHT-03**: Net worth page shows historical net worth line chart with per-panel breakdown
 - [ ] **INSIGHT-04**: Net worth page shows summary statistics (current net worth, period change in $ and %, all-time high)
 - [ ] **INSIGHT-05**: Net worth page has a time range selector (30d, 90d, 6m, 1y, all)
+- [ ] **INSIGHT-06**: User can toggle the 30-day growth rate badge on/off from settings
 
 ### Operational
 
@@ -124,42 +125,66 @@ Explicitly excluded. Documented to prevent scope creep.
 
 Which phases cover which requirements. Updated during roadmap creation.
 
+### v1.0 (Complete)
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACCT-01 | TBD | Pending |
-| ACCT-02 | TBD | Pending |
-| ACCT-03 | TBD | Pending |
-| ACCT-04 | TBD | Pending |
-| ACCT-05 | TBD | Pending |
-| INSIGHT-01 | TBD | Pending |
-| INSIGHT-02 | TBD | Pending |
-| INSIGHT-03 | TBD | Pending |
-| INSIGHT-04 | TBD | Pending |
-| INSIGHT-05 | TBD | Pending |
-| OPS-01 | TBD | Pending |
-| OPS-02 | TBD | Pending |
-| OPS-03 | TBD | Pending |
-| ALERT-01 | TBD | Pending |
-| ALERT-02 | TBD | Pending |
-| ALERT-03 | TBD | Pending |
-| ALERT-04 | TBD | Pending |
-| ALERT-05 | TBD | Pending |
-| ALERT-06 | TBD | Pending |
-| ALERT-07 | TBD | Pending |
-| PROJ-01 | TBD | Pending |
-| PROJ-02 | TBD | Pending |
-| PROJ-03 | TBD | Pending |
-| PROJ-04 | TBD | Pending |
-| PROJ-05 | TBD | Pending |
-| PROJ-06 | TBD | Pending |
-| PROJ-07 | TBD | Pending |
-| PROJ-08 | TBD | Pending |
+| DATA-01 | Phase 2 | Complete |
+| DATA-02 | Phase 2 | Complete |
+| DATA-03 | Phase 2 | Complete |
+| DATA-04 | Phase 2 | Complete |
+| DASH-01 | Phase 3 | Complete |
+| DASH-02 | Phase 3 | Complete |
+| DASH-03 | Phase 3 | Complete |
+| DASH-04 | Phase 3 | Complete |
+| VIZ-01 | Phase 4 | Complete |
+| VIZ-02 | Phase 4 | Complete |
+| AUTH-01 | Phase 1 | Complete |
+| UX-01 | Phase 4 | Complete |
+| UX-02 | Phase 4 | Complete |
+| UX-03 | Phase 4 | Complete |
+| UX-04 | Phase 4 | Complete |
+| DEPLOY-01 | Phase 1 | Complete |
+
+### v1.1 (Active)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| ACCT-01 | Phase 5 | Pending |
+| ACCT-02 | Phase 5 | Pending |
+| ACCT-03 | Phase 7 | Pending |
+| ACCT-04 | Phase 7 | Pending |
+| ACCT-05 | Phase 7 | Pending |
+| INSIGHT-01 | Phase 6 | Pending |
+| INSIGHT-02 | Phase 7 | Pending |
+| INSIGHT-03 | Phase 7 | Pending |
+| INSIGHT-04 | Phase 7 | Pending |
+| INSIGHT-05 | Phase 7 | Pending |
+| INSIGHT-06 | Phase 6 | Pending |
+| OPS-01 | Phase 6 | Pending |
+| OPS-02 | Phase 6 | Pending |
+| OPS-03 | Phase 5 | Pending |
+| ALERT-01 | Phase 8 | Pending |
+| ALERT-02 | Phase 8 | Pending |
+| ALERT-03 | Phase 8 | Pending |
+| ALERT-04 | Phase 8 | Pending |
+| ALERT-05 | Phase 8 | Pending |
+| ALERT-06 | Phase 8 | Pending |
+| ALERT-07 | Phase 8 | Pending |
+| PROJ-01 | Phase 9 | Pending |
+| PROJ-02 | Phase 9 | Pending |
+| PROJ-03 | Phase 9 | Pending |
+| PROJ-04 | Phase 9 | Pending |
+| PROJ-05 | Phase 9 | Pending |
+| PROJ-06 | Phase 9 | Pending |
+| PROJ-07 | Phase 9 | Pending |
+| PROJ-08 | Phase 9 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28
+- v1.0 requirements: 16 total, 16 mapped (Complete)
+- v1.1 requirements: 29 total, 29 mapped
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after v1.1 milestone definition*
+*Last updated: 2026-03-15 after v1.1 roadmap creation*
