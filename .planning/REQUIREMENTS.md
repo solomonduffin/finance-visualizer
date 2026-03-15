@@ -45,7 +45,7 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 ### Account Management
 
 - [ ] **ACCT-01**: User can set a custom display name for any connected account in settings
-- [ ] **ACCT-02**: Custom display names appear everywhere the account is referenced (panels, charts, dropdowns, alerts, projections)
+- [x] **ACCT-02**: Custom display names appear everywhere the account is referenced (panels, charts, dropdowns, alerts, projections)
 - [ ] **ACCT-03**: Crypto accounts from the same institution are aggregated into a single line in the investments panel
 - [ ] **ACCT-04**: Aggregated crypto entry shows combined balance history on the investments chart
 - [ ] **ACCT-05**: User can expand an aggregated crypto entry to see individual wallet balances
@@ -63,7 +63,7 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 
 - [ ] **OPS-01**: Settings page shows log of recent sync attempts with timestamps, success/failure status, and account counts
 - [ ] **OPS-02**: Failed syncs show expandable error details (with sensitive data sanitized)
-- [ ] **OPS-03**: Stale accounts are soft-deleted to preserve user-owned metadata (display names, alert rules, projection rates)
+- [x] **OPS-03**: Stale accounts are soft-deleted to preserve user-owned metadata (display names, alert rules, projection rates)
 
 ### Alerts & Notifications
 
@@ -151,7 +151,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | ACCT-01 | Phase 5 | Pending |
-| ACCT-02 | Phase 5 | Pending |
+| ACCT-02 | Phase 5 | Complete |
 | ACCT-03 | Phase 7 | Pending |
 | ACCT-04 | Phase 7 | Pending |
 | ACCT-05 | Phase 7 | Pending |
@@ -163,7 +163,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INSIGHT-06 | Phase 6 | Pending |
 | OPS-01 | Phase 6 | Pending |
 | OPS-02 | Phase 6 | Pending |
-| OPS-03 | Phase 5 | Pending |
+| OPS-03 | Phase 5 | Complete |
 | ALERT-01 | Phase 8 | Pending |
 | ALERT-02 | Phase 8 | Pending |
 | ALERT-03 | Phase 8 | Pending |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
-status: planning
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-15T21:43:28.171Z"
-last_activity: 2026-03-15 — Roadmap created for v1.1 Enhancements (Phases 5-9, 28 requirements)
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-15T22:26:00.000Z"
+last_activity: 2026-03-15 — Completed Plan 05-01 (account metadata migration, COALESCE handlers, soft-delete sync)
 progress:
   total_phases: 9
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-  percent: 44
+  total_plans: 14
+  completed_plans: 12
+  percent: 48
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
-**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) ready to plan
+**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) Plan 1 complete, Plans 2-3 remaining
 
 ## Current Position
 
 Phase: 5 of 9 (Data Foundation)
-Plan: Not yet planned
-Status: Ready to plan
-Last activity: 2026-03-15 — Roadmap created for v1.1 Enhancements (Phases 5-9, 28 requirements)
+Plan: 2 of 3
+Status: Executing
+Last activity: 2026-03-15 — Completed Plan 05-01 (account metadata migration, COALESCE handlers, soft-delete sync)
 
-Progress: [##########░░░░░░░░░░] 44% (v1.0 complete, v1.1 starting)
+Progress: [##########░░░░░░░░░░] 48% (12/14 plans complete including v1.0)
 
 ## Performance Metrics
 
@@ -48,6 +48,12 @@ Progress: [##########░░░░░░░░░░] 44% (v1.0 complete, v1.1 st
 | 03 Backend API | 2 | ~7min | ~3.5min |
 | 04 Frontend Dashboard | 3 | ~3.7h | ~74min |
 
+**By Phase (v1.1):**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 05 Data Foundation | 1/3 | 8min | 8min |
+
 *Updated after each plan completion*
 
 ## Accumulated Context
@@ -57,8 +63,11 @@ Progress: [##########░░░░░░░░░░] 44% (v1.0 complete, v1.1 st
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [v1.0]: SyncOnce deletes stale accounts not in latest SimpleFIN response -- must convert to soft-delete in Phase 5
-- [v1.0]: COALESCE(display_name, name) pattern identified for all account queries once display_name column exists
+- [v1.0->v1.1]: SyncOnce now soft-deletes (UPDATE hidden_at) instead of hard-deleting stale accounts (completed in 05-01)
+- [v1.1]: COALESCE(display_name, name) pattern implemented in all account queries (GetAccounts, GetSummary, GetBalanceHistory)
+- [v1.1]: SyncOnce returns ([]string, error) with restored account display names
+- [v1.1]: SyncNow handler runs synchronously and returns {ok:true, restored:[...]}
+- [v1.1]: System-owned vs user-owned column separation enforced in processAccount upsert
 - [v1.0]: Use shopspring/decimal for all financial arithmetic -- applies to growth indicators and projections
 - [v1.1 research]: expr-lang/expr for alert expression evaluation, react-querybuilder for alert rule builder UI
 - [v1.1 research]: go-mail v0.7.1 for SMTP email -- only maintained Go SMTP library with STARTTLS
@@ -75,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T21:43:28.169Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-data-foundation/05-CONTEXT.md
+Last session: 2026-03-15T22:26:00.000Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: .planning/phases/05-data-foundation/05-01-SUMMARY.md
