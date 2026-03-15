@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-15T15:54:40.877Z"
+stopped_at: Completed 04-frontend-dashboard-01-PLAN.md
+last_updated: "2026-03-15T16:23:46.026Z"
 last_activity: 2026-03-15 — Roadmap created, ready for phase planning
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 11
+  completed_plans: 9
   percent: 100
 ---
 
@@ -58,6 +58,7 @@ Progress: [██████████] 100% (Phase 1 of 4 complete)
 | Phase 02-data-pipeline P03 | 30 | 3 tasks | 10 files |
 | Phase 03-backend-api P01 | 4 | 2 tasks | 4 files |
 | Phase 03-backend-api P02 | 3 | 2 tasks | 3 files |
+| Phase 04-frontend-dashboard P01 | 2 | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [Phase 03-backend-api]: DATE() applied to balance_date in SQL to normalize datetime to YYYY-MM-DD string
 - [Phase 03-backend-api]: hasChecking/hasCredit bool flags prevent phantom zero entries for days with no panel data
 - [Phase 03-backend-api]: Single-pass accumulator map pattern used in GetBalanceHistory for efficient per-day aggregation
+- [Phase 04-frontend-dashboard]: Named exports for all new components (PanelCard, SkeletonDashboard, EmptyState) — consistent with existing codebase pattern
+- [Phase 04-frontend-dashboard]: Tailwind v4 @custom-variant dark (&:where(.dark, .dark *)) — applies dark styles to any element inside .dark
+- [Phase 04-frontend-dashboard]: No window.matchMedia detection in useDarkMode — manual toggle only per plan spec
 
 ### Pending Todos
 
@@ -107,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T15:54:40.875Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-frontend-dashboard/04-CONTEXT.md
+Last session: 2026-03-15T16:23:46.024Z
+Stopped at: Completed 04-frontend-dashboard-01-PLAN.md
+Resume file: None

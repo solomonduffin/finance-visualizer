@@ -79,7 +79,7 @@ Plans:
   4. A "Last updated" indicator shows how long ago the most recent sync ran
   5. Before the first sync completes, the app shows a clear empty/loading state rather than blank panels or errors
   6. The user can toggle between dark and light mode, and the layout is usable on a mobile screen
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 04-01-PLAN.md — Dark mode infrastructure, API client extensions, reusable components (PanelCard, SkeletonDashboard, EmptyState), utilities
@@ -96,4 +96,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
 | 2. Data Pipeline | 3/3 | Complete   | 2026-03-15 |
 | 3. Backend API | 2/2 | Complete   | 2026-03-15 |
-| 4. Frontend Dashboard | 0/3 | Planning complete | - |
+| 4. Frontend Dashboard | 1/3 | In Progress|  |
