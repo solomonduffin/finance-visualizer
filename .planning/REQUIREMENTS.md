@@ -3,9 +3,9 @@
 **Defined:** 2026-03-15
 **Core Value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
 
-## v1 Requirements
+## v1.0 Requirements (Complete)
 
-Requirements for initial release. Each maps to roadmap phases.
+All 16 requirements shipped and verified in v1.0.
 
 ### Data Pipeline
 
@@ -38,15 +38,65 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **DEPLOY-01**: App runs as Docker containers (Go backend, React frontend, Nginx reverse proxy)
 
-## v2 Requirements
+## v1.1 Requirements
+
+Requirements for the enhancements milestone. Each maps to roadmap phases.
+
+### Account Management
+
+- [ ] **ACCT-01**: User can set a custom display name for any connected account in settings
+- [ ] **ACCT-02**: Custom display names appear everywhere the account is referenced (panels, charts, dropdowns, alerts, projections)
+- [ ] **ACCT-03**: Crypto accounts from the same institution are aggregated into a single line in the investments panel
+- [ ] **ACCT-04**: Aggregated crypto entry shows combined balance history on the investments chart
+- [ ] **ACCT-05**: User can expand an aggregated crypto entry to see individual wallet balances
+
+### Dashboard Insights
+
+- [ ] **INSIGHT-01**: Each panel card shows percentage change over the last 30 days with green/red color coding
+- [ ] **INSIGHT-02**: User can click net worth donut to navigate to a dedicated net worth page
+- [ ] **INSIGHT-03**: Net worth page shows historical net worth line chart with per-panel breakdown
+- [ ] **INSIGHT-04**: Net worth page shows summary statistics (current net worth, period change in $ and %, all-time high)
+- [ ] **INSIGHT-05**: Net worth page has a time range selector (30d, 90d, 6m, 1y, all)
+
+### Operational
+
+- [ ] **OPS-01**: Settings page shows log of recent sync attempts with timestamps, success/failure status, and account counts
+- [ ] **OPS-02**: Failed syncs show expandable error details (with sensitive data sanitized)
+- [ ] **OPS-03**: Stale accounts are soft-deleted to preserve user-owned metadata (display names, alert rules, projection rates)
+
+### Alerts & Notifications
+
+- [ ] **ALERT-01**: User can create alert rules using an expression builder combining buckets and/or accounts with +/- operators
+- [ ] **ALERT-02**: Alert rules compare computed value against a threshold using <, <=, >, >=, == operators
+- [ ] **ALERT-03**: Alerts fire once on threshold crossing and once on recovery (3-state machine)
+- [ ] **ALERT-04**: Alert email includes rule name, computed value, threshold, and crossing direction with account context
+- [ ] **ALERT-05**: User can configure email provider in settings (SMTP or API service with provider-specific fields)
+- [ ] **ALERT-06**: User can send a test email to verify configuration
+- [ ] **ALERT-07**: User can create, edit, enable/disable, and delete alert rules
+
+### Financial Projections
+
+- [ ] **PROJ-01**: User can set APY per savings account and expected growth rate per investment account
+- [ ] **PROJ-02**: User can toggle reinvestment (compound vs simple) per account
+- [ ] **PROJ-03**: User can enable/disable which accounts are included in the projection
+- [ ] **PROJ-04**: User can model income: annual amount, monthly savings %, and per-account allocation
+- [ ] **PROJ-05**: Projection chart shows projected net worth over a custom time horizon
+- [ ] **PROJ-06**: All projection settings persist in the database across sessions
+- [ ] **PROJ-07**: Projections page accessible from main navigation
+- [ ] **PROJ-08**: Investment accounts display available holdings detail from SimpleFIN where supported (e.g., Vanguard funds)
+
+## Future Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
 
+### Data Export
+
+- **EXPORT-01**: User can download balance history as CSV or JSON
+- **EXPORT-02**: Export supports date range filtering
+
 ### Drill-Down Views
 
-- **DRILL-01**: User can drill into each panel to see per-account detail
-- **DRILL-02**: Savings accounts show APY where available
-- **DRILL-03**: Investment accounts show growth/loss per account
+- **DRILL-01**: User can drill into each panel to see per-account detail with APY and growth/loss
 - **DRILL-04**: Investment performance over time chart per account
 
 ### Future
@@ -63,11 +113,12 @@ Explicitly excluded. Documented to prevent scope creep.
 |---------|--------|
 | Transaction categorization | Not needed for pure balance/net-worth dashboard; doubles complexity |
 | Multi-user support | Single user, self-hosted by design |
-| Real-time / on-demand sync | SimpleFIN rate limits; daily cron is sufficient |
-| Push notifications / alerts | Adds external service dependencies to a self-contained tool |
-| Write operations (transfers, payments) | Read-only via SimpleFIN is a feature, not a limitation |
+| Real-time crypto price feeds | SimpleFIN provides daily snapshots; second data source creates sync conflicts |
+| Monte Carlo simulation | Dedicated product scope (ProjectionLab); deterministic projection sufficient |
+| SMS notifications | Requires paid service (Twilio); email-to-SMS gateways available as workaround |
+| Year-over-year chart comparison | Declined for v1.1 |
 | Native mobile app | Responsive web UI covers the use case |
-| CSV / export | SQLite file is directly queryable |
+| Write operations to financial accounts | Read-only via SimpleFIN is a feature, not a limitation |
 
 ## Traceability
 
@@ -75,28 +126,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 1 | Complete |
-| DEPLOY-01 | Phase 1 | Complete |
-| DATA-01 | Phase 2 | Complete |
-| DATA-02 | Phase 2 | Complete |
-| DATA-03 | Phase 2 | Complete |
-| DATA-04 | Phase 2 | Complete |
-| DASH-01 | Phase 3 | Complete |
-| DASH-02 | Phase 3 | Complete |
-| DASH-03 | Phase 3 | Complete |
-| DASH-04 | Phase 3 | Complete |
-| VIZ-01 | Phase 4 | Complete |
-| VIZ-02 | Phase 4 | Complete |
-| UX-01 | Phase 4 | Complete |
-| UX-02 | Phase 4 | Complete |
-| UX-03 | Phase 4 | Complete |
-| UX-04 | Phase 4 | Complete |
+| ACCT-01 | TBD | Pending |
+| ACCT-02 | TBD | Pending |
+| ACCT-03 | TBD | Pending |
+| ACCT-04 | TBD | Pending |
+| ACCT-05 | TBD | Pending |
+| INSIGHT-01 | TBD | Pending |
+| INSIGHT-02 | TBD | Pending |
+| INSIGHT-03 | TBD | Pending |
+| INSIGHT-04 | TBD | Pending |
+| INSIGHT-05 | TBD | Pending |
+| OPS-01 | TBD | Pending |
+| OPS-02 | TBD | Pending |
+| OPS-03 | TBD | Pending |
+| ALERT-01 | TBD | Pending |
+| ALERT-02 | TBD | Pending |
+| ALERT-03 | TBD | Pending |
+| ALERT-04 | TBD | Pending |
+| ALERT-05 | TBD | Pending |
+| ALERT-06 | TBD | Pending |
+| ALERT-07 | TBD | Pending |
+| PROJ-01 | TBD | Pending |
+| PROJ-02 | TBD | Pending |
+| PROJ-03 | TBD | Pending |
+| PROJ-04 | TBD | Pending |
+| PROJ-05 | TBD | Pending |
+| PROJ-06 | TBD | Pending |
+| PROJ-07 | TBD | Pending |
+| PROJ-08 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 16 total
-- Mapped to phases: 16
-- Unmapped: 0
+- v1.1 requirements: 28 total
+- Mapped to phases: 0
+- Unmapped: 28
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after roadmap creation*
+*Last updated: 2026-03-15 after v1.1 milestone definition*
