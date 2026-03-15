@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-15T22:26:00.000Z"
-last_activity: 2026-03-15 — Completed Plan 05-01 (account metadata migration, COALESCE handlers, soft-delete sync)
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-15T22:36:00.000Z"
+last_activity: 2026-03-15 — Completed Plan 05-02 (PATCH accounts endpoint, frontend API extension, display name utility)
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 14
-  completed_plans: 12
-  percent: 48
+  completed_plans: 13
+  percent: 52
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
-**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) Plan 1 complete, Plans 2-3 remaining
+**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) Plans 1-2 complete, Plan 3 remaining
 
 ## Current Position
 
 Phase: 5 of 9 (Data Foundation)
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Executing
-Last activity: 2026-03-15 — Completed Plan 05-01 (account metadata migration, COALESCE handlers, soft-delete sync)
+Last activity: 2026-03-15 — Completed Plan 05-02 (PATCH accounts endpoint, frontend API extension, display name utility)
 
-Progress: [##########░░░░░░░░░░] 48% (12/14 plans complete including v1.0)
+Progress: [##########░░░░░░░░░░] 52% (13/14 plans complete including v1.0)
 
 ## Performance Metrics
 
@@ -52,7 +52,7 @@ Progress: [##########░░░░░░░░░░] 48% (12/14 plans complete i
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 05 Data Foundation | 1/3 | 8min | 8min |
+| 05 Data Foundation | 2/3 | 15min | 7.5min |
 
 *Updated after each plan completion*
 
@@ -68,6 +68,8 @@ Recent decisions affecting current work:
 - [v1.1]: SyncOnce returns ([]string, error) with restored account display names
 - [v1.1]: SyncNow handler runs synchronously and returns {ok:true, restored:[...]}
 - [v1.1]: System-owned vs user-owned column separation enforced in processAccount upsert
+- [v1.1]: NullableString custom JSON unmarshal for PATCH null/absent/string distinction
+- [v1.1]: getAccountDisplayName utility as single source of truth for account name rendering
 - [v1.0]: Use shopspring/decimal for all financial arithmetic -- applies to growth indicators and projections
 - [v1.1 research]: expr-lang/expr for alert expression evaluation, react-querybuilder for alert rule builder UI
 - [v1.1 research]: go-mail v0.7.1 for SMTP email -- only maintained Go SMTP library with STARTTLS
@@ -84,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T22:26:00.000Z
-Stopped at: Completed 05-01-PLAN.md
-Resume file: .planning/phases/05-data-foundation/05-01-SUMMARY.md
+Last session: 2026-03-15T22:36:00.000Z
+Stopped at: Completed 05-02-PLAN.md
+Resume file: .planning/phases/05-data-foundation/05-02-SUMMARY.md

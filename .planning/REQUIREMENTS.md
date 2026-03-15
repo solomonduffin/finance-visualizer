@@ -44,7 +44,7 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 
 ### Account Management
 
-- [ ] **ACCT-01**: User can set a custom display name for any connected account in settings
+- [x] **ACCT-01**: User can set a custom display name for any connected account in settings
 - [x] **ACCT-02**: Custom display names appear everywhere the account is referenced (panels, charts, dropdowns, alerts, projections)
 - [ ] **ACCT-03**: Crypto accounts from the same institution are aggregated into a single line in the investments panel
 - [ ] **ACCT-04**: Aggregated crypto entry shows combined balance history on the investments chart
@@ -150,7 +150,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACCT-01 | Phase 5 | Pending |
+| ACCT-01 | Phase 5 | Complete |
 | ACCT-02 | Phase 5 | Complete |
 | ACCT-03 | Phase 7 | Pending |
 | ACCT-04 | Phase 7 | Pending |

@@ -118,7 +118,7 @@ Plans:
   2. Custom display names appear everywhere the account is shown: dashboard panels, charts, and any future dropdowns
   3. When a connected account disappears from SimpleFIN (outage or removal), the account is hidden rather than deleted, preserving its display name and balance history
   4. When a previously hidden account reappears in a subsequent sync, it is automatically restored with all its metadata intact
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 05-01-PLAN.md — Schema migration (display_name, hidden_at, account_type_override), handler COALESCE updates, sync engine soft-delete and auto-restore
@@ -184,7 +184,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 2. Data Pipeline | v1.0 | 3/3 | Complete | 2026-03-15 |
 | 3. Backend API | v1.0 | 2/2 | Complete | 2026-03-15 |
 | 4. Frontend Dashboard | v1.0 | 3/3 | Complete | 2026-03-15 |
-| 5. Data Foundation | v1.1 | 0/3 | Planned | - |
+| 5. Data Foundation | 2/3 | In Progress|  | - |
 | 6. Operational Quick Wins | v1.1 | 0/? | Not started | - |
 | 7. Analytics Expansion | v1.1 | 0/? | Not started | - |
 | 8. Alert System | v1.1 | 0/? | Not started | - |
