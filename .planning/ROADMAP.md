@@ -29,7 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `docker compose up` starts the full stack (Go backend, React frontend, Nginx) with no manual steps
   4. SQLite database initializes with all tables via golang-migrate on first start
   5. WAL mode is active and concurrent reads are not blocked during writes
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Go scaffold, SQLite connection with WAL mode, migrations with full upfront schema, config management
+- [ ] 01-02-PLAN.md — Auth system: bcrypt password verification, JWT issuance, chi router with rate-limited login and protected routes
+- [ ] 01-03-PLAN.md — React frontend scaffold with login page, Docker dev/prod environment (Dockerfile, Compose, Nginx)
 
 ### Phase 2: Data Pipeline
 **Goal**: Real financial account data flows from SimpleFIN into SQLite on a daily schedule with full history on first sync
@@ -74,7 +79,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/3 | Planning complete | - |
 | 2. Data Pipeline | 0/TBD | Not started | - |
 | 3. Backend API | 0/TBD | Not started | - |
 | 4. Frontend Dashboard | 0/TBD | Not started | - |
