@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-data-pipeline-02-PLAN.md
-last_updated: "2026-03-15T04:36:35.954Z"
+stopped_at: Completed 02-data-pipeline-03-PLAN.md
+last_updated: "2026-03-15T04:59:57.856Z"
 last_activity: 2026-03-15 — Roadmap created, ready for phase planning
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
   percent: 100
 ---
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100% (Phase 1 of 4 complete)
 | Phase 01-foundation P03 | 40 | 3 tasks | 21 files |
 | Phase 02-data-pipeline P01 | 3 | 2 tasks | 5 files |
 | Phase 02-data-pipeline P02 | 3 | 2 tasks | 8 files |
+| Phase 02-data-pipeline P03 | 30 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 02-data-pipeline]: syncMu is package-level not struct-level; shopspring/decimal promoted to direct dependency in go.mod
 - [Phase 02-data-pipeline]: Use context.Background() for background SyncOnce goroutines from HTTP handlers — HTTP request context cancels on response completion, aborting in-flight sync
 - [Phase 02-data-pipeline]: signal.NotifyContext for graceful shutdown — scheduler goroutine stops cleanly on SIGINT/SIGTERM
+- [Phase 02-data-pipeline]: react-router-dom v7 for client-side routing between Dashboard and Settings
+- [Phase 02-data-pipeline]: ClaimSetupToken exchanges base64 setup tokens for access URLs; IsSetupToken auto-detects input type
+- [Phase 02-data-pipeline]: SyncOnce appends /accounts to stored access URL per SimpleFIN spec
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T04:36:35.952Z
-Stopped at: Completed 02-data-pipeline-02-PLAN.md
+Last session: 2026-03-15T04:59:57.854Z
+Stopped at: Completed 02-data-pipeline-03-PLAN.md
 Resume file: None

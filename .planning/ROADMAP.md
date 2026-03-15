@@ -13,7 +13,7 @@ Four phases build up the stack in dependency order: the foundation establishes t
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - SQLite schema with migrations, bcrypt auth, JWT middleware, and Docker dev environment (completed 2026-03-15)
-- [ ] **Phase 2: Data Pipeline** - SimpleFIN HTTP client, daily cron goroutine, append-only snapshot storage
+- [x] **Phase 2: Data Pipeline** - SimpleFIN HTTP client, daily cron goroutine, append-only snapshot storage (completed 2026-03-15)
 - [ ] **Phase 3: Backend API** - Full REST API (accounts, balances, net worth, sync status) with layered service architecture
 - [ ] **Phase 4: Frontend Dashboard** - React SPA with liquid/savings/investments panels, charts, and UX polish
 
@@ -46,7 +46,7 @@ Plans:
   3. The daily cron goroutine runs automatically and appends a new snapshot row per account each day
   4. Each account has at most one snapshot per day (duplicate fetches do not clobber or duplicate data)
   5. Sync failures for individual accounts are logged and do not abort the entire sync run
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — SimpleFIN HTTP client + sync orchestration engine (SyncOnce, RunScheduler, account upsert, idempotent snapshots)
@@ -85,6 +85,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
-| 2. Data Pipeline | 2/3 | In Progress|  |
+| 2. Data Pipeline | 3/3 | Complete   | 2026-03-15 |
 | 3. Backend API | 0/TBD | Not started | - |
 | 4. Frontend Dashboard | 0/TBD | Not started | - |
