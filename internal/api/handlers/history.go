@@ -40,11 +40,13 @@ type dayAccumulator struct {
 // Liquid per day = sum(checking balances that day) + sum(credit balances that day).
 // Credit balances are already negative, so they reduce the liquid total.
 // "Other" type accounts are excluded from all three panels.
+// Hidden accounts (hidden_at IS NOT NULL) are excluded.
+// COALESCE(account_type_override, account_type) is used for effective type grouping.
 //
 // Optional query parameter: ?days=N limits results to the last N days (N must be positive integer).
 // Invalid or non-positive values are ignored and all data is returned.
 //
-// Empty state returns {"liquid":[],"savings":[],"investments":[]} — never null.
+// Empty state returns {"liquid":[],"savings":[],"investments":[]} -- never null.
 func GetBalanceHistory(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		resp := historyResponse{
@@ -63,16 +65,20 @@ func GetBalanceHistory(database *sql.DB) http.HandlerFunc {
 
 		// Build SQL query. Only include account types that map to dashboard panels.
 		// Use DATE() to normalize balance_date to YYYY-MM-DD string format.
+		// Use COALESCE for effective type and filter out hidden accounts.
 		query := `
-			SELECT DATE(bs.balance_date), a.account_type, bs.balance
+			SELECT DATE(bs.balance_date),
+			       COALESCE(a.account_type_override, a.account_type) AS effective_type,
+			       bs.balance
 			FROM balance_snapshots bs
 			JOIN accounts a ON a.id = bs.account_id
-			WHERE a.account_type IN ('checking', 'credit', 'savings', 'investment')`
+			WHERE a.hidden_at IS NULL
+			  AND COALESCE(a.account_type_override, a.account_type) IN ('checking', 'credit', 'savings', 'investment')`
 
 		if days > 0 {
 			query += fmt.Sprintf(" AND bs.balance_date >= date('now', '-%d days')", days)
 		}
-		query += " ORDER BY bs.balance_date ASC, a.account_type"
+		query += " ORDER BY bs.balance_date ASC, effective_type"
 
 		rows, err := database.QueryContext(r.Context(), query)
 		if err != nil {
@@ -86,8 +92,8 @@ func GetBalanceHistory(database *sql.DB) http.HandlerFunc {
 		dayMap := map[string]*dayAccumulator{}
 
 		for rows.Next() {
-			var balanceDate, accountType, balance string
-			if err := rows.Scan(&balanceDate, &accountType, &balance); err != nil {
+			var balanceDate, effectiveType, balance string
+			if err := rows.Scan(&balanceDate, &effectiveType, &balance); err != nil {
 				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 				return
 			}
@@ -105,7 +111,7 @@ func GetBalanceHistory(database *sql.DB) http.HandlerFunc {
 				dateOrder = append(dateOrder, balanceDate)
 			}
 
-			switch accountType {
+			switch effectiveType {
 			case "checking":
 				acc.sumChecking = acc.sumChecking.Add(amount)
 				acc.hasChecking = true

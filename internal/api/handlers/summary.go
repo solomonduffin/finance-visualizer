@@ -20,15 +20,20 @@ type summaryResponse struct {
 // the timestamp of the most recent successful sync.
 //
 // Liquid = sum(checking) + sum(credit), where credit balances are already negative.
-// Accounts with type "other" are excluded from all panel totals.
+// Accounts with effective type "other" are excluded from all panel totals.
+// Hidden accounts (hidden_at IS NOT NULL) are excluded.
+// COALESCE(account_type_override, account_type) is used for effective type grouping.
 func GetSummary(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Query all accounts with their latest snapshot balance using a correlated subquery.
+		// Query all visible accounts with their latest snapshot balance using a correlated subquery.
+		// Uses effective type (COALESCE of override and inferred type) for grouping.
 		rows, err := database.QueryContext(r.Context(), `
-			SELECT a.account_type, bs.balance
+			SELECT COALESCE(a.account_type_override, a.account_type) AS effective_type,
+			       bs.balance
 			FROM accounts a
 			JOIN balance_snapshots bs ON bs.account_id = a.id
-			WHERE bs.balance_date = (
+			WHERE a.hidden_at IS NULL
+			  AND bs.balance_date = (
 				SELECT MAX(bs2.balance_date)
 				FROM balance_snapshots bs2
 				WHERE bs2.account_id = a.id
@@ -45,8 +50,8 @@ func GetSummary(database *sql.DB) http.HandlerFunc {
 		investments := decimal.Zero
 
 		for rows.Next() {
-			var accountType, balance string
-			if err := rows.Scan(&accountType, &balance); err != nil {
+			var effectiveType, balance string
+			if err := rows.Scan(&effectiveType, &balance); err != nil {
 				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 				return
 			}
@@ -57,7 +62,7 @@ func GetSummary(database *sql.DB) http.HandlerFunc {
 				continue
 			}
 
-			switch accountType {
+			switch effectiveType {
 			case "checking", "credit":
 				liquid = liquid.Add(amount)
 			case "savings":
