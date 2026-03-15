@@ -31,6 +31,7 @@ func setupFinanceTestDB(t *testing.T) *sql.DB {
 
 // seedAccounts inserts accounts into the test DB.
 // accounts is a slice of maps with keys: id, name, account_type, currency, org_name.
+// Optional keys: display_name, hidden_at, account_type_override.
 func seedAccounts(t *testing.T, database *sql.DB, accounts []map[string]string) {
 	t.Helper()
 	for _, a := range accounts {
@@ -42,6 +43,26 @@ func seedAccounts(t *testing.T, database *sql.DB, accounts []map[string]string) 
 		)
 		if err != nil {
 			t.Fatalf("seedAccounts: %v", err)
+		}
+
+		// Update optional metadata columns if provided.
+		if dn, ok := a["display_name"]; ok {
+			_, err := database.Exec(`UPDATE accounts SET display_name = ? WHERE id = ?`, dn, a["id"])
+			if err != nil {
+				t.Fatalf("seedAccounts display_name: %v", err)
+			}
+		}
+		if ha, ok := a["hidden_at"]; ok {
+			_, err := database.Exec(`UPDATE accounts SET hidden_at = ? WHERE id = ?`, ha, a["id"])
+			if err != nil {
+				t.Fatalf("seedAccounts hidden_at: %v", err)
+			}
+		}
+		if ato, ok := a["account_type_override"]; ok {
+			_, err := database.Exec(`UPDATE accounts SET account_type_override = ? WHERE id = ?`, ato, a["id"])
+			if err != nil {
+				t.Fatalf("seedAccounts account_type_override: %v", err)
+			}
 		}
 	}
 }
@@ -234,6 +255,69 @@ func TestGetSummary_LastSyncedAt_Null(t *testing.T) {
 
 	if string(resp["last_synced_at"]) != "null" {
 		t.Errorf("last_synced_at: got %s, want null", resp["last_synced_at"])
+	}
+}
+
+func TestGetSummary_ExcludesHidden(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Visible Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "chk2", "name": "Hidden Checking", "account_type": "checking", "currency": "USD", "org_name": "", "hidden_at": "2024-01-15T10:00:00Z"},
+		{"id": "sav1", "name": "Visible Savings", "account_type": "savings", "currency": "USD", "org_name": ""},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "500.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav1", "balance": "2000.00", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/summary", nil)
+	w := httptest.NewRecorder()
+	handlers.GetSummary(database)(w, req)
+
+	var resp map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// liquid should only include visible checking (1000), not hidden (500)
+	if string(resp["liquid"]) != `"1000.00"` {
+		t.Errorf("liquid: got %s, want \"1000.00\" (hidden checking excluded)", resp["liquid"])
+	}
+	if string(resp["savings"]) != `"2000.00"` {
+		t.Errorf("savings: got %s, want \"2000.00\"", resp["savings"])
+	}
+}
+
+func TestGetSummary_TypeOverride(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	// Account with account_type=checking but overridden to savings
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Real Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "chk2", "name": "Overridden to Savings", "account_type": "checking", "currency": "USD", "org_name": "", "account_type_override": "savings"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "500.00", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/summary", nil)
+	w := httptest.NewRecorder()
+	handlers.GetSummary(database)(w, req)
+
+	var resp map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// liquid should be 1000 (only real checking), savings should be 500 (overridden)
+	if string(resp["liquid"]) != `"1000.00"` {
+		t.Errorf("liquid: got %s, want \"1000.00\" (overridden account goes to savings)", resp["liquid"])
+	}
+	if string(resp["savings"]) != `"500.00"` {
+		t.Errorf("savings: got %s, want \"500.00\" (overridden from checking)", resp["savings"])
 	}
 }
 

@@ -351,6 +351,73 @@ func TestGetBalanceHistory_MultipleAccountsSameDaySummed(t *testing.T) {
 	}
 }
 
+func TestGetBalanceHistory_ExcludesHidden(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Visible Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "chk2", "name": "Hidden Checking", "account_type": "checking", "currency": "USD", "org_name": "", "hidden_at": "2024-01-15T10:00:00Z"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "500.00", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/balance-history", nil)
+	w := httptest.NewRecorder()
+	handlers.GetBalanceHistory(database)(w, req)
+
+	var resp historyResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Liquid) != 1 {
+		t.Fatalf("liquid: expected 1 point, got %d", len(resp.Liquid))
+	}
+	// Only visible checking (1000), hidden (500) excluded
+	if resp.Liquid[0].Balance != "1000.00" {
+		t.Errorf("liquid balance: got %q, want \"1000.00\" (hidden excluded)", resp.Liquid[0].Balance)
+	}
+}
+
+func TestGetBalanceHistory_TypeOverride(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	// Account with account_type=checking but overridden to savings
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Real Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "chk2", "name": "Override to Savings", "account_type": "checking", "currency": "USD", "org_name": "", "account_type_override": "savings"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "500.00", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/balance-history", nil)
+	w := httptest.NewRecorder()
+	handlers.GetBalanceHistory(database)(w, req)
+
+	var resp historyResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// liquid should be 1000 (only real checking), savings should be 500 (overridden)
+	if len(resp.Liquid) != 1 {
+		t.Fatalf("liquid: expected 1 point, got %d", len(resp.Liquid))
+	}
+	if resp.Liquid[0].Balance != "1000.00" {
+		t.Errorf("liquid balance: got %q, want \"1000.00\"", resp.Liquid[0].Balance)
+	}
+	if len(resp.Savings) != 1 {
+		t.Fatalf("savings: expected 1 point, got %d", len(resp.Savings))
+	}
+	if resp.Savings[0].Balance != "500.00" {
+		t.Errorf("savings balance: got %q, want \"500.00\" (overridden from checking)", resp.Savings[0].Balance)
+	}
+}
+
 func TestGetBalanceHistory_TimeSeriesOrdering(t *testing.T) {
 	database := setupFinanceTestDB(t)
 

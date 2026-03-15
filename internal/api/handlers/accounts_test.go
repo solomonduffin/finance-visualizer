@@ -11,12 +11,16 @@ import (
 
 // accountItemJSON mirrors the JSON structure returned by GetAccounts.
 type accountItemJSON struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Balance  string `json:"balance"`
-	Currency string `json:"currency"`
-	OrgName  string `json:"org_name"`
+	ID                  string  `json:"id"`
+	Name                string  `json:"name"`
+	OriginalName        string  `json:"original_name"`
+	Type                string  `json:"type"`
+	Balance             string  `json:"balance"`
+	Currency            string  `json:"currency"`
+	OrgName             string  `json:"org_name"`
+	DisplayName         *string `json:"display_name"`
+	HiddenAt            *string `json:"hidden_at"`
+	AccountTypeOverride *string `json:"account_type_override"`
 }
 
 // accountsResponseJSON mirrors the grouped response from GetAccounts.
@@ -258,6 +262,153 @@ func TestGetAccounts_OrderedByNameWithinGroup(t *testing.T) {
 	for i, want := range expected {
 		if names[i] != want {
 			t.Errorf("position %d: got %q, want %q", i, names[i], want)
+		}
+	}
+}
+
+func TestGetAccounts_DisplayName(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Chase Checking 1234", "account_type": "checking", "currency": "USD", "org_name": "Chase", "display_name": "Main Checking"},
+		{"id": "chk2", "name": "Chase Checking 5678", "account_type": "checking", "currency": "USD", "org_name": "Chase"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "500.00", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var resp accountsResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Liquid) != 2 {
+		t.Fatalf("expected 2 liquid accounts, got %d", len(resp.Liquid))
+	}
+
+	// Account with display_name set should return it as name
+	var withDisplayName, withoutDisplayName *accountItemJSON
+	for i := range resp.Liquid {
+		if resp.Liquid[i].ID == "chk1" {
+			withDisplayName = &resp.Liquid[i]
+		}
+		if resp.Liquid[i].ID == "chk2" {
+			withoutDisplayName = &resp.Liquid[i]
+		}
+	}
+
+	if withDisplayName == nil || withoutDisplayName == nil {
+		t.Fatal("expected both accounts in response")
+	}
+
+	// COALESCE(display_name, name) should be "Main Checking"
+	if withDisplayName.Name != "Main Checking" {
+		t.Errorf("name with display_name set: got %q, want %q", withDisplayName.Name, "Main Checking")
+	}
+	// original_name should always be the raw SimpleFIN name
+	if withDisplayName.OriginalName != "Chase Checking 1234" {
+		t.Errorf("original_name: got %q, want %q", withDisplayName.OriginalName, "Chase Checking 1234")
+	}
+	// display_name field should be non-nil
+	if withDisplayName.DisplayName == nil || *withDisplayName.DisplayName != "Main Checking" {
+		t.Errorf("display_name field: got %v, want \"Main Checking\"", withDisplayName.DisplayName)
+	}
+
+	// Account without display_name: name should be original name
+	if withoutDisplayName.Name != "Chase Checking 5678" {
+		t.Errorf("name without display_name: got %q, want %q", withoutDisplayName.Name, "Chase Checking 5678")
+	}
+	// original_name should match name
+	if withoutDisplayName.OriginalName != "Chase Checking 5678" {
+		t.Errorf("original_name without display_name: got %q, want %q", withoutDisplayName.OriginalName, "Chase Checking 5678")
+	}
+	// display_name should be nil
+	if withoutDisplayName.DisplayName != nil {
+		t.Errorf("display_name field should be null, got %v", withoutDisplayName.DisplayName)
+	}
+}
+
+func TestGetAccounts_HiddenExcluded(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Visible Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "chk2", "name": "Hidden Checking", "account_type": "checking", "currency": "USD", "org_name": "", "hidden_at": "2024-01-15T10:00:00Z"},
+		{"id": "sav1", "name": "Visible Savings", "account_type": "savings", "currency": "USD", "org_name": ""},
+		{"id": "sav2", "name": "Hidden Savings", "account_type": "savings", "currency": "USD", "org_name": "", "hidden_at": "2024-01-15T10:00:00Z"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "500.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav1", "balance": "2000.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav2", "balance": "3000.00", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var resp accountsResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// Only visible accounts should appear
+	if len(resp.Liquid) != 1 {
+		t.Errorf("expected 1 visible liquid account, got %d", len(resp.Liquid))
+	}
+	if len(resp.Savings) != 1 {
+		t.Errorf("expected 1 visible savings account, got %d", len(resp.Savings))
+	}
+	if len(resp.Liquid) == 1 && resp.Liquid[0].ID != "chk1" {
+		t.Errorf("expected visible checking (chk1), got %q", resp.Liquid[0].ID)
+	}
+	if len(resp.Savings) == 1 && resp.Savings[0].ID != "sav1" {
+		t.Errorf("expected visible savings (sav1), got %q", resp.Savings[0].ID)
+	}
+}
+
+func TestGetAccounts_TypeOverride(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	// An account with account_type=checking but override=savings should appear in savings group
+	seedAccounts(t, database, []map[string]string{
+		{"id": "acct1", "name": "Misclassified Account", "account_type": "checking", "currency": "USD", "org_name": "", "account_type_override": "savings"},
+		{"id": "acct2", "name": "Normal Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "acct1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "acct2", "balance": "500.00", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var resp accountsResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// acct1 should appear in savings (override), acct2 in liquid
+	if len(resp.Savings) != 1 {
+		t.Errorf("expected 1 savings account (overridden), got %d", len(resp.Savings))
+	}
+	if len(resp.Liquid) != 1 {
+		t.Errorf("expected 1 liquid account, got %d", len(resp.Liquid))
+	}
+	if len(resp.Savings) == 1 && resp.Savings[0].ID != "acct1" {
+		t.Errorf("expected overridden account in savings, got %q", resp.Savings[0].ID)
+	}
+	if len(resp.Savings) == 1 {
+		// account_type_override should be set
+		if resp.Savings[0].AccountTypeOverride == nil || *resp.Savings[0].AccountTypeOverride != "savings" {
+			t.Errorf("account_type_override should be \"savings\", got %v", resp.Savings[0].AccountTypeOverride)
 		}
 	}
 }
