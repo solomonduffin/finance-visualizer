@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
-status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-15T22:36:00.000Z"
-last_activity: 2026-03-15 — Completed Plan 05-02 (PATCH accounts endpoint, frontend API extension, display name utility)
+status: completed
+stopped_at: Completed 05-03-PLAN.md (Phase 5 complete)
+last_updated: "2026-03-15T23:17:09.234Z"
+last_activity: 2026-03-15 — Completed Plan 05-03 (Settings Accounts section with inline rename, hide/unhide, drag-and-drop)
 progress:
-  total_phases: 9
-  completed_phases: 4
-  total_plans: 14
-  completed_plans: 13
-  percent: 52
+  total_phases: 5
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 56
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
-**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) Plans 1-2 complete, Plan 3 remaining
+**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) complete, ready for Phase 6
 
 ## Current Position
 
-Phase: 5 of 9 (Data Foundation)
-Plan: 3 of 3
-Status: Executing
-Last activity: 2026-03-15 — Completed Plan 05-02 (PATCH accounts endpoint, frontend API extension, display name utility)
+Phase: 5 of 9 (Data Foundation) -- COMPLETE
+Plan: 3 of 3 (all complete)
+Status: Phase Complete
+Last activity: 2026-03-15 — Completed Plan 05-03 (Settings Accounts section with inline rename, hide/unhide, drag-and-drop)
 
-Progress: [##########░░░░░░░░░░] 52% (13/14 plans complete including v1.0)
+Progress: [###########░░░░░░░░░] 56% (14/14 plans complete through Phase 5)
 
 ## Performance Metrics
 
@@ -52,7 +52,7 @@ Progress: [##########░░░░░░░░░░] 52% (13/14 plans complete i
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 05 Data Foundation | 2/3 | 15min | 7.5min |
+| 05 Data Foundation | 3/3 | 32min | 10.7min |
 
 *Updated after each plan completion*
 
@@ -70,6 +70,9 @@ Recent decisions affecting current work:
 - [v1.1]: System-owned vs user-owned column separation enforced in processAccount upsert
 - [v1.1]: NullableString custom JSON unmarshal for PATCH null/absent/string distinction
 - [v1.1]: getAccountDisplayName utility as single source of truth for account name rendering
+- [v1.1]: Optimistic state update for drag-and-drop type reassignment (prevents fly-off animation)
+- [v1.1]: include_hidden=true query param on GET /api/accounts for Settings page
+- [v1.1]: Custom account groups (Coinbase aggregation) deferred to Phase 7
 - [v1.0]: Use shopspring/decimal for all financial arithmetic -- applies to growth indicators and projections
 - [v1.1 research]: expr-lang/expr for alert expression evaluation, react-querybuilder for alert rule builder UI
 - [v1.1 research]: go-mail v0.7.1 for SMTP email -- only maintained Go SMTP library with STARTTLS
@@ -86,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T22:36:00.000Z
-Stopped at: Completed 05-02-PLAN.md
-Resume file: .planning/phases/05-data-foundation/05-02-SUMMARY.md
+Last session: 2026-03-15T23:17:09.232Z
+Stopped at: Completed 05-03-PLAN.md (Phase 5 complete)
+Resume file: None

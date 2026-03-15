@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### v1.1 Enhancements
 
-- [ ] **Phase 5: Data Foundation** - Soft-delete migration and account display name system (schema prerequisites for all v1.1 features)
+- [x] **Phase 5: Data Foundation** - Soft-delete migration and account display name system (schema prerequisites for all v1.1 features) (completed 2026-03-15)
 - [ ] **Phase 6: Operational Quick Wins** - Sync failure diagnostics in settings and growth rate indicators on panel cards
 - [ ] **Phase 7: Analytics Expansion** - Crypto account aggregation by institution and dedicated net worth drill-down page
 - [ ] **Phase 8: Alert System** - Expression-based alert rules with 3-state machine and email notifications via SMTP
@@ -118,12 +118,12 @@ Plans:
   2. Custom display names appear everywhere the account is shown: dashboard panels, charts, and any future dropdowns
   3. When a connected account disappears from SimpleFIN (outage or removal), the account is hidden rather than deleted, preserving its display name and balance history
   4. When a previously hidden account reappears in a subsequent sync, it is automatically restored with all its metadata intact
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 05-01-PLAN.md — Schema migration (display_name, hidden_at, account_type_override), handler COALESCE updates, sync engine soft-delete and auto-restore
-- [ ] 05-02-PLAN.md — PATCH /api/accounts/:id endpoint, frontend API client extension, display name utility, PanelCard rendering update
-- [ ] 05-03-PLAN.md — Settings page Accounts section with inline rename, hide/unhide, drag-and-drop type reassignment, toast notifications
+- [x] 05-01-PLAN.md — Schema migration (display_name, hidden_at, account_type_override), handler COALESCE updates, sync engine soft-delete and auto-restore
+- [x] 05-02-PLAN.md — PATCH /api/accounts/:id endpoint, frontend API client extension, display name utility, PanelCard rendering update
+- [x] 05-03-PLAN.md — Settings page Accounts section with inline rename, hide/unhide, drag-and-drop type reassignment, toast notifications
 
 ### Phase 6: Operational Quick Wins
 **Goal**: Users can diagnose sync problems from the settings UI and see at-a-glance growth trends on every panel card
@@ -184,7 +184,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 2. Data Pipeline | v1.0 | 3/3 | Complete | 2026-03-15 |
 | 3. Backend API | v1.0 | 2/2 | Complete | 2026-03-15 |
 | 4. Frontend Dashboard | v1.0 | 3/3 | Complete | 2026-03-15 |
-| 5. Data Foundation | 2/3 | In Progress|  | - |
+| 5. Data Foundation | v1.1 | 3/3 | Complete | 2026-03-15 |
 | 6. Operational Quick Wins | v1.1 | 0/? | Not started | - |
 | 7. Analytics Expansion | v1.1 | 0/? | Not started | - |
 | 8. Alert System | v1.1 | 0/? | Not started | - |
