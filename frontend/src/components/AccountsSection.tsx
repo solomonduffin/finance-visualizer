@@ -1,0 +1,637 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { DragDropProvider, useDraggable, useDroppable } from '@dnd-kit/react'
+import {
+  getAccounts,
+  updateAccount,
+  type AccountItem,
+  type AccountsResponse,
+  type UpdateAccountRequest,
+} from '../api/client'
+import { getAccountDisplayName } from '../utils/account'
+import { formatCurrency } from '../utils/format'
+
+interface AccountsSectionProps {
+  onAccountRestored?: (names: string[]) => void
+}
+
+type PanelType = 'liquid' | 'savings' | 'investments' | 'other'
+
+const PANEL_LABELS: Record<PanelType, string> = {
+  liquid: 'Liquid',
+  savings: 'Savings',
+  investments: 'Investments',
+  other: 'Other',
+}
+
+const PANEL_TYPE_TO_OVERRIDE: Record<PanelType, string> = {
+  liquid: 'checking',
+  savings: 'savings',
+  investments: 'investment',
+  other: 'other',
+}
+
+const PANEL_ORDER: PanelType[] = ['liquid', 'savings', 'investments', 'other']
+
+// --- Icons (inline SVGs, 16x16) ---
+
+function PencilIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </svg>
+  )
+}
+
+function EyeOffIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+      <path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+      <line x1="2" x2="22" y1="2" y2="22" />
+    </svg>
+  )
+}
+
+function EyeIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function GripIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="9" cy="5" r="1" /><circle cx="15" cy="5" r="1" />
+      <circle cx="9" cy="12" r="1" /><circle cx="15" cy="12" r="1" />
+      <circle cx="9" cy="19" r="1" /><circle cx="15" cy="19" r="1" />
+    </svg>
+  )
+}
+
+function ResetIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  )
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      className={`transition-transform ${expanded ? 'rotate-90' : ''}`}
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+// --- Draggable Account Row ---
+
+function DraggableAccountRow({
+  account,
+  panelType,
+  editingId,
+  editValue,
+  savingId,
+  errorId,
+  isMobile,
+  onStartEdit,
+  onEditChange,
+  onSaveEdit,
+  onCancelEdit,
+  onReset,
+  onHide,
+  onTypeChange,
+}: {
+  account: AccountItem
+  panelType: PanelType
+  editingId: string | null
+  editValue: string
+  savingId: string | null
+  errorId: string | null
+  isMobile: boolean
+  onStartEdit: (id: string, currentName: string) => void
+  onEditChange: (value: string) => void
+  onSaveEdit: (id: string) => void
+  onCancelEdit: () => void
+  onReset: (id: string) => void
+  onHide: (id: string) => void
+  onTypeChange: (id: string, newType: PanelType) => void
+}) {
+  const isEditing = editingId === account.id
+  const isSaving = savingId === account.id
+  const hasError = errorId === account.id
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const { ref: draggableRef, isDragging } = useDraggable({
+    id: account.id,
+    data: { panelType },
+    disabled: isMobile,
+  })
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [isEditing])
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      onSaveEdit(account.id)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      onCancelEdit()
+    }
+  }
+
+  return (
+    <div
+      ref={draggableRef}
+      data-testid={`account-row-${account.id}`}
+      className={`flex items-center gap-2 py-2 px-3 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+        isSaving ? 'opacity-50' : ''
+      } ${isDragging ? 'opacity-30' : ''}`}
+    >
+      {/* Drag handle (desktop only) */}
+      {!isMobile && (
+        <span className="cursor-grab text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shrink-0" title="Drag to move">
+          <GripIcon />
+        </span>
+      )}
+
+      {/* Account info */}
+      <div className="flex-1 min-w-0">
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => onEditChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => onSaveEdit(account.id)}
+            placeholder={account.original_name}
+            className="w-full border-b-2 border-blue-500 bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none py-0.5"
+            aria-label="Edit account name"
+          />
+        ) : (
+          <div>
+            <span className="text-sm text-gray-900 dark:text-gray-100 truncate block">
+              {getAccountDisplayName(account)}
+            </span>
+            {account.display_name && (
+              <span className="text-xs text-gray-400 dark:text-gray-500 truncate block">
+                {account.original_name}
+              </span>
+            )}
+          </div>
+        )}
+        {hasError && (
+          <span className="text-xs text-red-500">Failed to save</span>
+        )}
+      </div>
+
+      {/* Balance */}
+      <span className="text-sm text-gray-700 dark:text-gray-300 font-medium shrink-0">
+        {formatCurrency(account.balance)}
+      </span>
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-1 shrink-0">
+        {!isEditing && (
+          <button
+            type="button"
+            onClick={() => onStartEdit(account.id, account.display_name ?? '')}
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            title="Edit name"
+            aria-label="Edit name"
+          >
+            <PencilIcon />
+          </button>
+        )}
+
+        {account.display_name && !isEditing && (
+          <button
+            type="button"
+            onClick={() => onReset(account.id)}
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            title="Reset to original name"
+            aria-label="Reset name"
+          >
+            <ResetIcon />
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onHide(account.id)}
+          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          title="Hide account"
+          aria-label="Hide account"
+        >
+          <EyeOffIcon />
+        </button>
+
+        {/* Mobile type dropdown */}
+        {isMobile && (
+          <select
+            value={panelType}
+            onChange={(e) => onTypeChange(account.id, e.target.value as PanelType)}
+            className="text-xs border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+            aria-label="Account type"
+          >
+            {PANEL_ORDER.map((t) => (
+              <option key={t} value={t}>{PANEL_LABELS[t]}</option>
+            ))}
+          </select>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// --- Account Group (droppable) ---
+
+function AccountGroup({
+  panelType,
+  accounts,
+  editingId,
+  editValue,
+  savingId,
+  errorId,
+  isMobile,
+  onStartEdit,
+  onEditChange,
+  onSaveEdit,
+  onCancelEdit,
+  onReset,
+  onHide,
+  onTypeChange,
+}: {
+  panelType: PanelType
+  accounts: AccountItem[]
+  editingId: string | null
+  editValue: string
+  savingId: string | null
+  errorId: string | null
+  isMobile: boolean
+  onStartEdit: (id: string, currentName: string) => void
+  onEditChange: (value: string) => void
+  onSaveEdit: (id: string) => void
+  onCancelEdit: () => void
+  onReset: (id: string) => void
+  onHide: (id: string) => void
+  onTypeChange: (id: string, newType: PanelType) => void
+}) {
+  const { ref } = useDroppable({ id: panelType })
+
+  return (
+    <div ref={ref} data-testid={`account-group-${panelType}`}>
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1 flex items-center gap-2">
+        {PANEL_LABELS[panelType]}
+        <span className="text-xs font-normal text-gray-400">({accounts.length})</span>
+      </h3>
+      {accounts.length === 0 ? (
+        <p className="text-xs text-gray-400 dark:text-gray-500 py-2 px-3">No accounts</p>
+      ) : (
+        <div className="space-y-0.5">
+          {accounts.map((account) => (
+            <DraggableAccountRow
+              key={account.id}
+              account={account}
+              panelType={panelType}
+              editingId={editingId}
+              editValue={editValue}
+              savingId={savingId}
+              errorId={errorId}
+              isMobile={isMobile}
+              onStartEdit={onStartEdit}
+              onEditChange={onEditChange}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+              onReset={onReset}
+              onHide={onHide}
+              onTypeChange={onTypeChange}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- Main AccountsSection ---
+
+export default function AccountsSection({ onAccountRestored }: AccountsSectionProps) {
+  const [accounts, setAccounts] = useState<AccountsResponse | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [errorId, setErrorId] = useState<string | null>(null)
+  const [hiddenExpanded, setHiddenExpanded] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Suppress unused variable warning - onAccountRestored is called by parent
+  void onAccountRestored
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    setIsMobile(mq.matches)
+    function handler(e: MediaQueryListEvent) {
+      setIsMobile(e.matches)
+    }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // Load accounts on mount
+  useEffect(() => {
+    loadAccounts()
+  }, [])
+
+  async function loadAccounts() {
+    try {
+      const data = await getAccounts()
+      setAccounts(data)
+    } catch {
+      // Silently fail; component just won't render accounts
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Collect all visible and hidden accounts
+  const visibleAccounts: Record<PanelType, AccountItem[]> = {
+    liquid: [],
+    savings: [],
+    investments: [],
+    other: [],
+  }
+  const hiddenAccounts: AccountItem[] = []
+
+  if (accounts) {
+    for (const panel of PANEL_ORDER) {
+      for (const acct of accounts[panel]) {
+        if (acct.hidden_at) {
+          hiddenAccounts.push(acct)
+        } else {
+          visibleAccounts[panel].push(acct)
+        }
+      }
+    }
+  }
+
+  // --- Handlers ---
+
+  function handleStartEdit(id: string, currentName: string) {
+    setEditingId(id)
+    setEditValue(currentName)
+    setErrorId(null)
+  }
+
+  function handleEditChange(value: string) {
+    setEditValue(value)
+  }
+
+  const handleSaveEdit = useCallback(async (id: string) => {
+    if (editingId !== id) return
+    const trimmed = editValue.trim()
+    setEditingId(null)
+
+    // If name is empty, clear display_name (reset to original)
+    const data: UpdateAccountRequest = {
+      display_name: trimmed || null,
+    }
+
+    setSavingId(id)
+    setErrorId(null)
+    try {
+      const updated = await updateAccount(id, data)
+      // Optimistic update: replace the account in local state
+      setAccounts((prev) => {
+        if (!prev) return prev
+        return replaceAccountInResponse(prev, updated)
+      })
+    } catch {
+      setErrorId(id)
+    } finally {
+      setSavingId(null)
+    }
+  }, [editingId, editValue])
+
+  function handleCancelEdit() {
+    setEditingId(null)
+    setEditValue('')
+    setErrorId(null)
+  }
+
+  async function handleReset(id: string) {
+    setSavingId(id)
+    setErrorId(null)
+    try {
+      const updated = await updateAccount(id, { display_name: null })
+      setAccounts((prev) => {
+        if (!prev) return prev
+        return replaceAccountInResponse(prev, updated)
+      })
+    } catch {
+      setErrorId(id)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function handleHide(id: string) {
+    setSavingId(id)
+    setErrorId(null)
+    try {
+      const updated = await updateAccount(id, { hidden: true })
+      setAccounts((prev) => {
+        if (!prev) return prev
+        return replaceAccountInResponse(prev, updated)
+      })
+    } catch {
+      setErrorId(id)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function handleUnhide(id: string) {
+    setSavingId(id)
+    setErrorId(null)
+    try {
+      const updated = await updateAccount(id, { hidden: false })
+      setAccounts((prev) => {
+        if (!prev) return prev
+        return replaceAccountInResponse(prev, updated)
+      })
+    } catch {
+      setErrorId(id)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function handleTypeChange(id: string, newType: PanelType) {
+    setSavingId(id)
+    setErrorId(null)
+    try {
+      const overrideValue = PANEL_TYPE_TO_OVERRIDE[newType]
+      await updateAccount(id, { account_type_override: overrideValue })
+      // Re-fetch to get the correct grouping from the server
+      await loadAccounts()
+    } catch {
+      setErrorId(id)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function handleDragEnd(event: any) {
+    const { source, target } = event.operation ?? {}
+    if (!source || !target) return
+
+    const sourceId = String(source.id)
+    const sourcePanelType = source.data?.panelType as PanelType | undefined
+    const targetId = String(target.id) as PanelType
+
+    // Only handle drops on panel group droppables (not on other accounts)
+    if (!PANEL_ORDER.includes(targetId)) return
+    if (sourcePanelType && sourcePanelType !== targetId) {
+      handleTypeChange(sourceId, targetId)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6">
+        <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Accounts</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading accounts...</p>
+      </div>
+    )
+  }
+
+  if (!accounts) return null
+
+  const totalVisible = PANEL_ORDER.reduce((sum, p) => sum + visibleAccounts[p].length, 0)
+  const totalHidden = hiddenAccounts.length
+
+  if (totalVisible === 0 && totalHidden === 0) return null
+
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6" data-testid="accounts-section">
+      <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Accounts</h2>
+
+      <DragDropProvider onDragEnd={handleDragEnd}>
+        <div className="space-y-4">
+          {PANEL_ORDER.map((panelType) => {
+            const panelAccounts = visibleAccounts[panelType]
+            // Only show groups that have accounts or are receiving drops
+            if (panelAccounts.length === 0 && panelType === 'other') return null
+            return (
+              <AccountGroup
+                key={panelType}
+                panelType={panelType}
+                accounts={panelAccounts}
+                editingId={editingId}
+                editValue={editValue}
+                savingId={savingId}
+                errorId={errorId}
+                isMobile={isMobile}
+                onStartEdit={handleStartEdit}
+                onEditChange={handleEditChange}
+                onSaveEdit={handleSaveEdit}
+                onCancelEdit={handleCancelEdit}
+                onReset={handleReset}
+                onHide={handleHide}
+                onTypeChange={handleTypeChange}
+              />
+            )
+          })}
+        </div>
+      </DragDropProvider>
+
+      {/* Hidden accounts collapsible */}
+      {totalHidden > 0 && (
+        <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+          <button
+            type="button"
+            onClick={() => setHiddenExpanded(!hiddenExpanded)}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+            aria-expanded={hiddenExpanded}
+          >
+            <ChevronIcon expanded={hiddenExpanded} />
+            Hidden Accounts ({totalHidden})
+          </button>
+
+          {hiddenExpanded && (
+            <div className="mt-2 space-y-1" data-testid="hidden-accounts">
+              {hiddenAccounts.map((account) => (
+                <div
+                  key={account.id}
+                  className="flex items-center gap-2 py-2 px-3 rounded-md opacity-50 text-gray-400 dark:text-gray-600"
+                  data-testid={`hidden-account-${account.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm truncate block">
+                      {getAccountDisplayName(account)}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium shrink-0">
+                    {formatCurrency(account.balance)}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                    Hidden
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleUnhide(account.id)}
+                    className="p-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    title="Unhide account"
+                    aria-label="Unhide account"
+                  >
+                    <EyeIcon />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Helper: replace a single account in the AccountsResponse by ID
+function replaceAccountInResponse(
+  response: AccountsResponse,
+  updated: AccountItem
+): AccountsResponse {
+  const result: AccountsResponse = {
+    liquid: [],
+    savings: [],
+    investments: [],
+    other: [],
+  }
+
+  for (const panel of PANEL_ORDER) {
+    result[panel] = response[panel].map((a) =>
+      a.id === updated.id ? updated : a
+    )
+  }
+
+  return result
+}
