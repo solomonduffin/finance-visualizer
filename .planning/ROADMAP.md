@@ -32,9 +32,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 01-01-PLAN.md — Go scaffold, SQLite connection with WAL mode, migrations with full upfront schema, config management
-- [ ] 01-02-PLAN.md — Auth system: bcrypt password verification, JWT issuance, chi router with rate-limited login and protected routes
-- [ ] 01-03-PLAN.md — React frontend scaffold with login page, Docker dev/prod environment (Dockerfile, Compose, Nginx)
+- [x] 01-01-PLAN.md — Go scaffold, SQLite connection with WAL mode, migrations with full upfront schema, config management
+- [x] 01-02-PLAN.md — Auth system: bcrypt password verification, JWT issuance, chi router with rate-limited login and protected routes
+- [x] 01-03-PLAN.md — React frontend scaffold with login page, Docker dev/prod environment (Dockerfile, Compose, Nginx)
 
 ### Phase 2: Data Pipeline
 **Goal**: Real financial account data flows from SimpleFIN into SQLite on a daily schedule with full history on first sync
@@ -46,7 +46,12 @@ Plans:
   3. The daily cron goroutine runs automatically and appends a new snapshot row per account each day
   4. Each account has at most one snapshot per day (duplicate fetches do not clobber or duplicate data)
   5. Sync failures for individual accounts are logged and do not abort the entire sync run
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — SimpleFIN HTTP client + sync orchestration engine (SyncOnce, RunScheduler, account upsert, idempotent snapshots)
+- [ ] 02-02-PLAN.md — Settings/sync API handlers, config extension (SYNC_HOUR), router wiring, scheduler goroutine in main.go
+- [ ] 02-03-PLAN.md — React settings page (token config, sync status, Sync Now button), client-side routing with react-router-dom
 
 ### Phase 3: Backend API
 **Goal**: All financial data in SQLite is accessible via a typed, authenticated REST API that the frontend can consume
@@ -80,6 +85,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
-| 2. Data Pipeline | 0/TBD | Not started | - |
+| 2. Data Pipeline | 0/3 | Planning complete | - |
 | 3. Backend API | 0/TBD | Not started | - |
 | 4. Frontend Dashboard | 0/TBD | Not started | - |
