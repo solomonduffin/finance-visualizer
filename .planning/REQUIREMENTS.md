@@ -36,7 +36,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Deployment
 
-- [ ] **DEPLOY-01**: App runs as Docker containers (Go backend, React frontend, Nginx reverse proxy)
+- [x] **DEPLOY-01**: App runs as Docker containers (Go backend, React frontend, Nginx reverse proxy)
 
 ## v2 Requirements
 
@@ -76,7 +76,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | AUTH-01 | Phase 1 | Pending |
-| DEPLOY-01 | Phase 1 | Pending |
+| DEPLOY-01 | Phase 1 | Complete |
 | DATA-01 | Phase 2 | Pending |
 | DATA-02 | Phase 2 | Pending |
 | DATA-03 | Phase 2 | Pending |
