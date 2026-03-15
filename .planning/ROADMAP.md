@@ -62,7 +62,11 @@ Plans:
   2. `GET /api/accounts` returns all accounts grouped by type with individual balances
   3. `GET /api/balance-history` returns daily snapshot series for each panel (liquid, savings, investments)
   4. All API endpoints return 401 when the request lacks a valid JWT
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Summary and accounts handlers (GET /api/summary with panel totals, GET /api/accounts with grouped account lists)
+- [ ] 03-02-PLAN.md — Balance history handler (GET /api/balance-history with per-panel time series) and route wiring for all three endpoints
 
 ### Phase 4: Frontend Dashboard
 **Goal**: The user sees a complete, polished finance dashboard with all panels, charts, and UX details in one glance
@@ -86,5 +90,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
 | 2. Data Pipeline | 3/3 | Complete   | 2026-03-15 |
-| 3. Backend API | 0/TBD | Not started | - |
+| 3. Backend API | 0/2 | Planning complete | - |
 | 4. Frontend Dashboard | 0/TBD | Not started | - |
