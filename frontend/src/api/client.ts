@@ -105,10 +105,14 @@ export interface SummaryResponse {
 
 export interface AccountItem {
   id: string
-  name: string
+  name: string              // effective name (COALESCE from backend)
+  original_name: string     // raw SimpleFIN name
   balance: string
-  account_type: string
+  account_type: string      // effective type (after override)
   org_name: string
+  display_name: string | null
+  hidden_at: string | null
+  account_type_override: string | null
 }
 
 export interface AccountsResponse {
