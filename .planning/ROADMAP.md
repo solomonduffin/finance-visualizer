@@ -62,7 +62,7 @@ Plans:
   2. `GET /api/accounts` returns all accounts grouped by type with individual balances
   3. `GET /api/balance-history` returns daily snapshot series for each panel (liquid, savings, investments)
   4. All API endpoints return 401 when the request lacks a valid JWT
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 03-01-PLAN.md — Summary and accounts handlers (GET /api/summary with panel totals, GET /api/accounts with grouped account lists)
@@ -90,5 +90,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
 | 2. Data Pipeline | 3/3 | Complete   | 2026-03-15 |
-| 3. Backend API | 0/2 | Planning complete | - |
+| 3. Backend API | 1/2 | In Progress|  |
 | 4. Frontend Dashboard | 0/TBD | Not started | - |

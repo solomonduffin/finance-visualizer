@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-data-pipeline-03-PLAN.md
-last_updated: "2026-03-15T05:03:37.913Z"
+stopped_at: Completed 03-backend-api-01-PLAN.md
+last_updated: "2026-03-15T15:15:39.667Z"
 last_activity: 2026-03-15 — Roadmap created, ready for phase planning
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
   percent: 100
 ---
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100% (Phase 1 of 4 complete)
 | Phase 02-data-pipeline P01 | 3 | 2 tasks | 5 files |
 | Phase 02-data-pipeline P02 | 3 | 2 tasks | 8 files |
 | Phase 02-data-pipeline P03 | 30 | 3 tasks | 10 files |
+| Phase 03-backend-api P01 | 4 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 02-data-pipeline]: react-router-dom v7 for client-side routing between Dashboard and Settings
 - [Phase 02-data-pipeline]: ClaimSetupToken exchanges base64 setup tokens for access URLs; IsSetupToken auto-detects input type
 - [Phase 02-data-pipeline]: SyncOnce appends /accounts to stored access URL per SimpleFIN spec
+- [Phase 03-backend-api]: investment account type maps to 'investments' JSON key (plural) in GetAccounts response
+- [Phase 03-backend-api]: GetAccounts empty groups pre-initialized as []accountItem{} (not nil) to ensure JSON '[]' not 'null'
+- [Phase 03-backend-api]: GetSummary uses StringFixed(2) for all decimal outputs — zero is '0.00' not '0'
 
 ### Pending Todos
 
@@ -99,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T04:59:57.854Z
-Stopped at: Completed 02-data-pipeline-03-PLAN.md
+Last session: 2026-03-15T15:15:39.665Z
+Stopped at: Completed 03-backend-api-01-PLAN.md
 Resume file: None

@@ -16,10 +16,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Dashboard
 
-- [ ] **DASH-01**: User sees liquid balance (checking minus credit card balances including pending)
-- [ ] **DASH-02**: User sees total savings across all savings accounts
-- [ ] **DASH-03**: User sees total investments (brokerage + retirement + crypto)
-- [ ] **DASH-04**: User sees individual account list with balances under each panel
+- [x] **DASH-01**: User sees liquid balance (checking minus credit card balances including pending)
+- [x] **DASH-02**: User sees total savings across all savings accounts
+- [x] **DASH-03**: User sees total investments (brokerage + retirement + crypto)
+- [x] **DASH-04**: User sees individual account list with balances under each panel
 
 ### Visualizations
 
@@ -81,10 +81,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-02 | Phase 2 | Complete |
 | DATA-03 | Phase 2 | Complete |
 | DATA-04 | Phase 2 | Complete |
-| DASH-01 | Phase 3 | Pending |
-| DASH-02 | Phase 3 | Pending |
-| DASH-03 | Phase 3 | Pending |
-| DASH-04 | Phase 3 | Pending |
+| DASH-01 | Phase 3 | Complete |
+| DASH-02 | Phase 3 | Complete |
+| DASH-03 | Phase 3 | Complete |
+| DASH-04 | Phase 3 | Complete |
 | VIZ-01 | Phase 4 | Pending |
 | VIZ-02 | Phase 4 | Pending |
 | UX-01 | Phase 4 | Pending |
