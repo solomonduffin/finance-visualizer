@@ -57,11 +57,14 @@ func NextRunTime(hour int) time.Time {
 //  3. Decides start-date (30 days ago on first sync, nil otherwise).
 //  4. Fetches accounts from SimpleFIN.
 //  5. Upserts each account and inserts an idempotent balance snapshot.
-//  6. Finalises the sync_log row.
+//  6. Restores any previously soft-deleted accounts that reappeared.
+//  7. Soft-deletes accounts not in the latest fetch (sets hidden_at, preserves snapshots).
+//  8. Finalises the sync_log row.
 //
+// Returns the display names of any restored accounts (for frontend toast notification).
 // Per-account errors are isolated: one bad account does not abort the run.
 // Concurrent calls are serialised via syncMu.
-func SyncOnce(ctx context.Context, db *sql.DB) error {
+func SyncOnce(ctx context.Context, db *sql.DB) ([]string, error) {
 	syncMu.Lock()
 	defer syncMu.Unlock()
 
@@ -74,10 +77,10 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 	).Scan(&accessURL)
 	if err == sql.ErrNoRows || accessURL == "" {
 		// No access URL configured — silent no-op.
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return fmt.Errorf("sync: read settings: %w", err)
+		return nil, fmt.Errorf("sync: read settings: %w", err)
 	}
 
 	// Create sync_log entry.
@@ -85,11 +88,11 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 		`INSERT INTO sync_log(started_at) VALUES(CURRENT_TIMESTAMP)`,
 	)
 	if err != nil {
-		return fmt.Errorf("sync: insert sync_log: %w", err)
+		return nil, fmt.Errorf("sync: insert sync_log: %w", err)
 	}
 	logID, err := res.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("sync: get sync_log id: %w", err)
+		return nil, fmt.Errorf("sync: get sync_log id: %w", err)
 	}
 
 	// Helper to finalise sync_log regardless of outcome.
@@ -109,7 +112,7 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM accounts`).Scan(&accountCount); err != nil {
 		errText := err.Error()
 		finalize(0, 0, &errText)
-		return fmt.Errorf("sync: count accounts: %w", err)
+		return nil, fmt.Errorf("sync: count accounts: %w", err)
 	}
 	if accountCount == 0 {
 		t := time.Now().Add(-30 * 24 * time.Hour)
@@ -123,7 +126,7 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		errText := err.Error()
 		finalize(0, 0, &errText)
-		return fmt.Errorf("sync: fetch accounts: %w", err)
+		return nil, fmt.Errorf("sync: fetch accounts: %w", err)
 	}
 
 	fetched := 0
@@ -140,22 +143,41 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 		fetched++
 	}
 
-	// Remove accounts no longer returned by SimpleFIN.
+	// Restore and soft-delete in correct order: restore BEFORE soft-delete.
+	var restored []string
 	if len(seenIDs) > 0 {
-		removed, err := removeStaleAccounts(ctx, db, seenIDs)
-		if err != nil {
-			slog.Warn("sync: stale account cleanup failed", "err", err)
-		} else if removed > 0 {
-			slog.Info("sync: removed stale accounts", "count", removed)
+		// (a) Restore accounts that reappeared in this sync.
+		var restoreErr error
+		restored, restoreErr = restoreReturningAccounts(ctx, db, seenIDs)
+		if restoreErr != nil {
+			slog.Warn("sync: restore returning accounts failed", "err", restoreErr)
+		} else if len(restored) > 0 {
+			slog.Info("sync: restored returning accounts", "names", restored)
+		}
+
+		// (b) Soft-delete accounts not in this sync (set hidden_at, preserve snapshots).
+		softDeleted, sdErr := softDeleteStaleAccounts(ctx, db, seenIDs)
+		if sdErr != nil {
+			slog.Warn("sync: soft-delete stale accounts failed", "err", sdErr)
+		} else if softDeleted > 0 {
+			slog.Info("sync: soft-deleted stale accounts", "count", softDeleted)
 		}
 	}
 
 	finalize(fetched, failed, nil)
 	slog.Info("sync: complete", "fetched", fetched, "failed", failed)
-	return nil
+	return restored, nil
 }
 
 // processAccount upserts an account row and inserts an idempotent balance snapshot.
+//
+// IMPORTANT: The ON CONFLICT SET clause only updates system-owned columns:
+//   - name, account_type, currency, org_name, org_slug, updated_at
+//
+// User-owned columns are NOT included and must NOT be added here:
+//   - display_name (user-set custom name)
+//   - hidden_at (soft-delete state)
+//   - account_type_override (user-set type override)
 func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) error {
 	// Validate balance is a parseable decimal.
 	if _, err := decimal.NewFromString(acct.Balance); err != nil {
@@ -165,7 +187,8 @@ func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) err
 	// Derive balance_date from Unix epoch.
 	balanceDate := time.Unix(acct.BalanceDate, 0).UTC().Format("2006-01-02")
 
-	// Upsert account.
+	// Upsert account. Only system-owned columns are updated on conflict.
+	// User-owned columns (display_name, hidden_at, account_type_override) are preserved.
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO accounts(id, name, account_type, currency, org_name, org_slug)
 		VALUES(?, ?, ?, ?, ?, ?)
@@ -193,9 +216,11 @@ func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) err
 	return nil
 }
 
-// removeStaleAccounts deletes accounts (and their snapshots) that were not
-// returned by the latest SimpleFIN fetch. Returns the number of accounts removed.
-func removeStaleAccounts(ctx context.Context, db *sql.DB, seenIDs []string) (int64, error) {
+// softDeleteStaleAccounts sets hidden_at on accounts that were not returned
+// by the latest SimpleFIN fetch. Only targets accounts where hidden_at IS NULL
+// (does not re-hide already hidden accounts). Does NOT delete balance_snapshots.
+// Returns the number of newly soft-deleted accounts.
+func softDeleteStaleAccounts(ctx context.Context, db *sql.DB, seenIDs []string) (int64, error) {
 	placeholders := make([]string, len(seenIDs))
 	args := make([]interface{}, len(seenIDs))
 	for i, id := range seenIDs {
@@ -204,21 +229,61 @@ func removeStaleAccounts(ctx context.Context, db *sql.DB, seenIDs []string) (int
 	}
 	inClause := strings.Join(placeholders, ",")
 
-	// Delete orphaned snapshots first (foreign key safety).
-	_, err := db.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM balance_snapshots WHERE account_id NOT IN (%s)`, inClause),
-		args...)
-	if err != nil {
-		return 0, fmt.Errorf("delete stale snapshots: %w", err)
-	}
-
 	res, err := db.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM accounts WHERE id NOT IN (%s)`, inClause),
+		fmt.Sprintf(`UPDATE accounts SET hidden_at = CURRENT_TIMESTAMP WHERE id NOT IN (%s) AND hidden_at IS NULL`, inClause),
 		args...)
 	if err != nil {
-		return 0, fmt.Errorf("delete stale accounts: %w", err)
+		return 0, fmt.Errorf("soft-delete stale accounts: %w", err)
 	}
 	return res.RowsAffected()
+}
+
+// restoreReturningAccounts clears hidden_at for accounts that reappeared in the
+// latest SimpleFIN fetch. Returns the display names (COALESCE(display_name, name))
+// of restored accounts for frontend toast notification.
+func restoreReturningAccounts(ctx context.Context, db *sql.DB, seenIDs []string) ([]string, error) {
+	placeholders := make([]string, len(seenIDs))
+	args := make([]interface{}, len(seenIDs))
+	for i, id := range seenIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// First, get display names of accounts that will be restored.
+	rows, err := db.QueryContext(ctx,
+		fmt.Sprintf(`SELECT COALESCE(display_name, name) FROM accounts WHERE id IN (%s) AND hidden_at IS NOT NULL`, inClause),
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("query returning accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan returning account name: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate returning accounts: %w", err)
+	}
+
+	if len(names) == 0 {
+		return nil, nil
+	}
+
+	// Then clear hidden_at.
+	_, err = db.ExecContext(ctx,
+		fmt.Sprintf(`UPDATE accounts SET hidden_at = NULL WHERE id IN (%s) AND hidden_at IS NOT NULL`, inClause),
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("restore returning accounts: %w", err)
+	}
+
+	return names, nil
 }
 
 // RunScheduler runs SyncOnce once per day at syncHour (0-23, local time).
@@ -232,7 +297,7 @@ func RunScheduler(ctx context.Context, syncHour int, db *sql.DB) {
 			timer.Stop()
 			return
 		case <-timer.C:
-			if err := SyncOnce(ctx, db); err != nil {
+			if _, err := SyncOnce(ctx, db); err != nil {
 				slog.Error("sync: scheduler run failed", "err", err)
 			}
 		}

@@ -107,7 +107,9 @@ func SaveSettings(database *sql.DB) http.HandlerFunc {
 
 		// Trigger immediate first sync in a goroutine.
 		// Use context.Background() so the sync isn't cancelled when the HTTP response completes.
-		go gosync.SyncOnce(context.Background(), database) //nolint:errcheck
+		go func() {
+			_, _ = gosync.SyncOnce(context.Background(), database)
+		}()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -115,16 +117,34 @@ func SaveSettings(database *sql.DB) http.HandlerFunc {
 	}
 }
 
+type syncNowResponse struct {
+	OK       bool     `json:"ok"`
+	Restored []string `json:"restored"`
+}
+
 // SyncNow returns an http.HandlerFunc that handles POST /api/sync/now.
-// It launches a background sync and returns immediately.
+// It runs a synchronous sync and returns restored account names in the response.
+// Sync errors are logged but the handler always returns ok:true (matching previous behavior
+// where sync was fire-and-forget).
 func SyncNow(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Launch sync in a goroutine — returns immediately regardless of sync outcome.
+		// Run sync synchronously so we can return restored account names.
 		// The sync mutex prevents concurrent runs.
-		go gosync.SyncOnce(context.Background(), database) //nolint:errcheck
+		restored, err := gosync.SyncOnce(r.Context(), database)
+		if err != nil {
+			// Log the error but don't fail the HTTP response — sync errors are expected
+			// when the access URL is unreachable or invalid.
+			restored = []string{}
+		}
+
+		if restored == nil {
+			restored = []string{}
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`)) //nolint:errcheck
+		json.NewEncoder(w).Encode(syncNowResponse{
+			OK:       true,
+			Restored: restored,
+		}) //nolint:errcheck
 	}
 }

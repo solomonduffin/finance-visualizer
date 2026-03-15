@@ -201,7 +201,8 @@ func TestSaveSettings_TriggerSync(t *testing.T) {
 func TestSyncNow_Success(t *testing.T) {
 	database := setupSettingsDB(t)
 
-	// Configure access URL so SyncOnce doesn't no-op immediately
+	// Configure access URL so SyncOnce doesn't no-op immediately.
+	// The URL is unreachable but SyncNow still returns ok:true.
 	_, err := database.Exec(
 		`INSERT INTO settings (key, value) VALUES ('simplefin_access_url', 'https://user:pass@host/simplefin')`,
 	)
@@ -225,6 +226,17 @@ func TestSyncNow_Success(t *testing.T) {
 	ok, hasOk := resp["ok"].(bool)
 	if !hasOk || !ok {
 		t.Errorf("expected ok=true, got %v", resp["ok"])
+	}
+
+	// Verify restored field is present as an array (empty since no accounts were actually restored)
+	restoredRaw, hasRestored := resp["restored"]
+	if !hasRestored {
+		t.Error("expected 'restored' field in response")
+	}
+	if restoredArr, ok := restoredRaw.([]interface{}); !ok {
+		t.Errorf("expected 'restored' to be an array, got %T", restoredRaw)
+	} else if len(restoredArr) != 0 {
+		t.Errorf("expected empty restored array, got %v", restoredArr)
 	}
 }
 
