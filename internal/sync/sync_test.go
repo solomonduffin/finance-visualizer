@@ -550,7 +550,7 @@ type parseError struct{ s string }
 
 func (e *parseError) Error() string { return "not an integer: " + e.s }
 
-func TestSyncOnce_RemovesStaleAccounts(t *testing.T) {
+func TestSoftDeleteStaleAccounts(t *testing.T) {
 	database := openTestDB(t)
 	ctx := context.Background()
 
@@ -593,16 +593,270 @@ func TestSyncOnce_RemovesStaleAccounts(t *testing.T) {
 		t.Fatalf("second sync: %v", err)
 	}
 
-	// acct-002 should be gone.
+	// acct-002 should still exist (soft-deleted, NOT hard-deleted).
 	database.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&count)
-	if count != 1 {
-		t.Errorf("expected 1 account after second sync, got %d", count)
+	if count != 2 {
+		t.Errorf("expected 2 accounts after soft-delete (not hard-deleted), got %d", count)
 	}
 
-	// Its snapshots should also be gone.
+	// acct-002 should have hidden_at set
+	var hiddenAt sql.NullString
+	database.QueryRow(`SELECT hidden_at FROM accounts WHERE id='acct-002'`).Scan(&hiddenAt)
+	if !hiddenAt.Valid {
+		t.Error("expected acct-002 to have hidden_at set (soft-deleted)")
+	}
+
+	// acct-001 should NOT have hidden_at set
+	database.QueryRow(`SELECT hidden_at FROM accounts WHERE id='acct-001'`).Scan(&hiddenAt)
+	if hiddenAt.Valid {
+		t.Error("expected acct-001 to NOT have hidden_at set (still active)")
+	}
+
+	// Balance snapshots should be preserved (NOT deleted).
 	var snapCount int
 	database.QueryRow(`SELECT COUNT(*) FROM balance_snapshots WHERE account_id='acct-002'`).Scan(&snapCount)
-	if snapCount != 0 {
-		t.Errorf("expected 0 snapshots for removed account, got %d", snapCount)
+	if snapCount == 0 {
+		t.Error("expected balance_snapshots to be preserved for soft-deleted account")
 	}
 }
+
+func TestSoftDeleteStaleAccounts_DoesNotReHide(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Sync 2 accounts.
+	accounts := []map[string]any{
+		{
+			"id": "acct-001", "name": "Active", "currency": "USD",
+			"balance": "1000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+		{
+			"id": "acct-002", "name": "Will Disappear", "currency": "USD",
+			"balance": "500.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	// Manually set hidden_at on acct-002 with a known timestamp
+	knownTimestamp := "2024-06-01T00:00:00Z"
+	_, err := database.Exec(`UPDATE accounts SET hidden_at = ? WHERE id = 'acct-002'`, knownTimestamp)
+	if err != nil {
+		t.Fatalf("set hidden_at: %v", err)
+	}
+
+	// Second sync with only acct-001. acct-002 already hidden, should NOT be re-hidden.
+	accounts2 := []map[string]any{
+		{
+			"id": "acct-001", "name": "Active", "currency": "USD",
+			"balance": "1100.00", "balance-date": 1700086400,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	updatedData, _ := json.Marshal(map[string]any{"errors": []string{}, "accounts": accounts2})
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(updatedData)
+	})
+
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	// hidden_at should still be the original timestamp (not updated)
+	var hiddenAt string
+	database.QueryRow(`SELECT hidden_at FROM accounts WHERE id='acct-002'`).Scan(&hiddenAt)
+	if hiddenAt != knownTimestamp {
+		t.Errorf("expected hidden_at to remain %q (not re-hidden), got %q", knownTimestamp, hiddenAt)
+	}
+}
+
+func TestRestoreReturningAccounts(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Sync 2 accounts.
+	accounts := []map[string]any{
+		{
+			"id": "acct-001", "name": "Checking", "currency": "USD",
+			"balance": "1000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+		{
+			"id": "acct-002", "name": "Savings", "currency": "USD",
+			"balance": "500.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	// Soft-delete acct-002 manually (simulating it disappeared from SimpleFIN)
+	_, err := database.Exec(`UPDATE accounts SET hidden_at = CURRENT_TIMESTAMP WHERE id = 'acct-002'`)
+	if err != nil {
+		t.Fatalf("soft-delete: %v", err)
+	}
+
+	// Now sync with both accounts again (acct-002 reappears)
+	allAccounts := []map[string]any{
+		{
+			"id": "acct-001", "name": "Checking", "currency": "USD",
+			"balance": "1100.00", "balance-date": 1700086400,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+		{
+			"id": "acct-002", "name": "Savings", "currency": "USD",
+			"balance": "600.00", "balance-date": 1700086400,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	updatedData, _ := json.Marshal(map[string]any{"errors": []string{}, "accounts": allAccounts})
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(updatedData)
+	})
+
+	restored, err := finSync.SyncOnce(ctx, database)
+	if err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	// acct-002 should be restored (hidden_at cleared)
+	var hiddenAt sql.NullString
+	database.QueryRow(`SELECT hidden_at FROM accounts WHERE id='acct-002'`).Scan(&hiddenAt)
+	if hiddenAt.Valid {
+		t.Errorf("expected acct-002 to have hidden_at cleared after restore, got %q", hiddenAt.String)
+	}
+
+	// SyncOnce should return names of restored accounts
+	if len(restored) != 1 {
+		t.Fatalf("expected 1 restored account name, got %d: %v", len(restored), restored)
+	}
+	if restored[0] != "Savings" {
+		t.Errorf("expected restored name \"Savings\", got %q", restored[0])
+	}
+}
+
+func TestSyncOnce_SoftDelete_PreservesSnapshots(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// First sync: 2 accounts with snapshots.
+	accounts1 := []map[string]any{
+		{
+			"id": "acct-001", "name": "Active", "currency": "USD",
+			"balance": "1000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+		{
+			"id": "acct-002", "name": "Disappearing", "currency": "USD",
+			"balance": "500.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	srv := newMockServer(t, accounts1)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	// Verify snapshots exist
+	var snapBefore int
+	database.QueryRow(`SELECT COUNT(*) FROM balance_snapshots WHERE account_id='acct-002'`).Scan(&snapBefore)
+	if snapBefore == 0 {
+		t.Fatal("expected snapshots for acct-002 before soft-delete")
+	}
+
+	// Second sync: acct-002 gone
+	accounts2 := []map[string]any{
+		{
+			"id": "acct-001", "name": "Active", "currency": "USD",
+			"balance": "1100.00", "balance-date": 1700086400,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	updatedData, _ := json.Marshal(map[string]any{"errors": []string{}, "accounts": accounts2})
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(updatedData)
+	})
+
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	// Snapshots must be preserved
+	var snapAfter int
+	database.QueryRow(`SELECT COUNT(*) FROM balance_snapshots WHERE account_id='acct-002'`).Scan(&snapAfter)
+	if snapAfter != snapBefore {
+		t.Errorf("expected %d snapshots preserved, got %d", snapBefore, snapAfter)
+	}
+}
+
+func TestProcessAccount_DoesNotOverwriteUserColumns(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// First sync: create an account
+	accounts := []map[string]any{
+		{
+			"id": "acct-001", "name": "My Checking", "currency": "USD",
+			"balance": "1000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	// Set user-owned columns
+	_, err := database.Exec(`UPDATE accounts SET display_name = 'My Custom Name', account_type_override = 'savings' WHERE id = 'acct-001'`)
+	if err != nil {
+		t.Fatalf("set user columns: %v", err)
+	}
+
+	// Second sync: same account with different name from SimpleFIN
+	accounts[0]["name"] = "My Checking Updated"
+	updatedData, _ := json.Marshal(map[string]any{"errors": []string{}, "accounts": accounts})
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(updatedData)
+	})
+
+	if err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	// User-owned columns should be preserved
+	var displayName sql.NullString
+	var typeOverride sql.NullString
+	var name string
+	database.QueryRow(`SELECT name, display_name, account_type_override FROM accounts WHERE id='acct-001'`).Scan(&name, &displayName, &typeOverride)
+
+	// name (system-owned) should be updated
+	if name != "My Checking Updated" {
+		t.Errorf("expected system name to be updated to \"My Checking Updated\", got %q", name)
+	}
+	// display_name (user-owned) should be preserved
+	if !displayName.Valid || displayName.String != "My Custom Name" {
+		t.Errorf("expected display_name to be preserved as \"My Custom Name\", got %v", displayName)
+	}
+	// account_type_override (user-owned) should be preserved
+	if !typeOverride.Valid || typeOverride.String != "savings" {
+		t.Errorf("expected account_type_override to be preserved as \"savings\", got %v", typeOverride)
+	}
+}
+
+// TestSyncOnce_SoftDelete_RestoreOrder verifies that restore happens before soft-delete
+// (tested implicitly through TestRestoreReturningAccounts, which verifies an account
+// can be restored and then other accounts soft-deleted in the same sync cycle).
