@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 04-frontend-dashboard-03-PLAN.md (awaiting human-verify checkpoint)
-last_updated: "2026-03-15T16:34:06.660Z"
+stopped_at: Completed 04-frontend-dashboard-03-PLAN.md
+last_updated: "2026-03-15T17:16:29.355Z"
 last_activity: 2026-03-15 — Roadmap created, ready for phase planning
 progress:
   total_phases: 4
@@ -61,6 +61,7 @@ Progress: [██████████] 100% (Phase 1 of 4 complete)
 | Phase 04-frontend-dashboard P01 | 2 | 2 tasks | 19 files |
 | Phase 04-frontend-dashboard P02 | 164 | 2 tasks | 4 files |
 | Phase 04-frontend-dashboard P03 | 14 | 2 tasks | 6 files |
+| Phase 04-frontend-dashboard P03 | 41 | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,9 @@ Recent decisions affecting current work:
 - [Phase 04-frontend-dashboard]: Inline SVG icons in App.tsx for sun/moon toggle — no icon library dependency needed
 - [Phase 04-frontend-dashboard]: Export prepareChartData from BalanceLineChart for direct unit testing without recharts dependency
 - [Phase 04-frontend-dashboard]: useDarkMode called inside Dashboard (not App) — two independent hook instances read same localStorage, avoids prop drilling
+- [Phase 04-frontend-dashboard]: /api/accounts merges checking+credit into liquid key to align with frontend panel model
+- [Phase 04-frontend-dashboard]: InferAccountType: sapphire and platinum keywords added; org_name threaded to PanelCard for institution context
+- [Phase 04-frontend-dashboard]: SyncOnce deletes stale accounts not present in latest SimpleFIN response to prevent orphaned data
 
 ### Pending Todos
 
@@ -117,6 +121,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-15T16:34:06.658Z
-Stopped at: Completed 04-frontend-dashboard-03-PLAN.md (awaiting human-verify checkpoint)
+Last session: 2026-03-15T17:16:29.353Z
+Stopped at: Completed 04-frontend-dashboard-03-PLAN.md
 Resume file: None
