@@ -412,3 +412,54 @@ func TestGetAccounts_TypeOverride(t *testing.T) {
 		}
 	}
 }
+
+func TestGetAccounts_IncludeHidden(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Visible Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "chk2", "name": "Hidden Checking", "account_type": "checking", "currency": "USD", "org_name": "", "hidden_at": "2024-01-15T10:00:00Z"},
+		{"id": "sav1", "name": "Visible Savings", "account_type": "savings", "currency": "USD", "org_name": ""},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "500.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav1", "balance": "2000.00", "balance_date": "2024-01-01"},
+	})
+
+	// Without include_hidden: hidden accounts excluded
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var resp accountsResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp.Liquid) != 1 {
+		t.Errorf("without include_hidden: expected 1 liquid, got %d", len(resp.Liquid))
+	}
+
+	// With include_hidden=true: all accounts included
+	req2 := httptest.NewRequest(http.MethodGet, "/api/accounts?include_hidden=true", nil)
+	w2 := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w2, req2)
+
+	var resp2 accountsResponseJSON
+	if err := json.Unmarshal(w2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp2.Liquid) != 2 {
+		t.Errorf("with include_hidden: expected 2 liquid, got %d", len(resp2.Liquid))
+	}
+	// Hidden account should have hidden_at set
+	var hiddenFound bool
+	for _, a := range resp2.Liquid {
+		if a.ID == "chk2" && a.HiddenAt != nil {
+			hiddenFound = true
+		}
+	}
+	if !hiddenFound {
+		t.Error("hidden account chk2 not found or missing hidden_at")
+	}
+}

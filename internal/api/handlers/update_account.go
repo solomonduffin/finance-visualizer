@@ -142,12 +142,13 @@ func UpdateAccount(database *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// SELECT the updated account and return it
+		// SELECT the updated account with latest balance and return it
 		var id, name, originalName, effectiveType, currency string
 		var orgName sql.NullString
 		var displayName sql.NullString
 		var hiddenAt sql.NullString
 		var accountTypeOverride sql.NullString
+		var balance sql.NullString
 
 		err = database.QueryRowContext(r.Context(), `
 			SELECT a.id,
@@ -155,14 +156,26 @@ func UpdateAccount(database *sql.DB) http.HandlerFunc {
 			       a.name AS original_name,
 			       COALESCE(a.account_type_override, a.account_type) AS effective_type,
 			       a.currency, a.org_name,
-			       a.display_name, a.hidden_at, a.account_type_override
+			       a.display_name, a.hidden_at, a.account_type_override,
+			       bs.balance
 			FROM accounts a
+			LEFT JOIN balance_snapshots bs ON bs.account_id = a.id
+			  AND bs.balance_date = (
+			      SELECT MAX(bs2.balance_date)
+			      FROM balance_snapshots bs2
+			      WHERE bs2.account_id = a.id
+			  )
 			WHERE a.id = ?
 		`, accountID).Scan(&id, &name, &originalName, &effectiveType, &currency, &orgName,
-			&displayName, &hiddenAt, &accountTypeOverride)
+			&displayName, &hiddenAt, &accountTypeOverride, &balance)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"failed to read updated account: %s"}`, err), http.StatusInternalServerError)
 			return
+		}
+
+		balanceStr := "0"
+		if balance.Valid {
+			balanceStr = balance.String
 		}
 
 		item := accountItem{
@@ -170,7 +183,7 @@ func UpdateAccount(database *sql.DB) http.HandlerFunc {
 			Name:         name,
 			OriginalName: originalName,
 			Type:         effectiveType,
-			Balance:      "0", // Balance is not relevant for the update response
+			Balance:      balanceStr,
 			Currency:     currency,
 		}
 		if orgName.Valid {

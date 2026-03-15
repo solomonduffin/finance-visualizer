@@ -27,9 +27,10 @@ type accountsResponse struct {
 }
 
 // GetAccounts returns an http.HandlerFunc that handles GET /api/accounts.
-// It returns all visible accounts grouped by effective type with the latest snapshot balance for each.
+// It returns accounts grouped by effective type with the latest snapshot balance for each.
 // Accounts with no snapshots show balance "0".
-// Hidden accounts (hidden_at IS NOT NULL) are excluded.
+// Hidden accounts (hidden_at IS NOT NULL) are excluded by default.
+// Pass ?include_hidden=true to include hidden accounts (for Settings page).
 // Display name is used when set (COALESCE), and account_type_override controls grouping.
 // Empty groups are returned as empty JSON arrays, not null.
 func GetAccounts(database *sql.DB) http.HandlerFunc {
@@ -41,10 +42,12 @@ func GetAccounts(database *sql.DB) http.HandlerFunc {
 			Other:       []accountItem{},
 		}
 
-		// Query all visible accounts with their latest balance using LEFT JOIN + correlated subquery.
+		includeHidden := r.URL.Query().Get("include_hidden") == "true"
+
+		// Query accounts with their latest balance using LEFT JOIN + correlated subquery.
 		// LEFT JOIN ensures accounts with no snapshots are still included (balance will be NULL).
 		// COALESCE is used for display_name -> name fallback and account_type_override -> account_type fallback.
-		rows, err := database.QueryContext(r.Context(), `
+		query := `
 			SELECT a.id,
 			       COALESCE(a.display_name, a.name) AS name,
 			       a.name AS original_name,
@@ -59,9 +62,13 @@ func GetAccounts(database *sql.DB) http.HandlerFunc {
 			      FROM balance_snapshots bs2
 			      WHERE bs2.account_id = a.id
 			  )
-			WHERE a.hidden_at IS NULL
-			ORDER BY effective_type, name
-		`)
+		`
+		if !includeHidden {
+			query += " WHERE a.hidden_at IS NULL"
+		}
+		query += " ORDER BY effective_type, name"
+
+		rows, err := database.QueryContext(r.Context(), query)
 		if err != nil {
 			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 			return

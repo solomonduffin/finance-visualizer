@@ -171,9 +171,11 @@ export async function getSummary(): Promise<SummaryResponse> {
 /**
  * GET /api/accounts
  * Returns accounts grouped by panel category.
+ * Pass includeHidden=true to include hidden accounts (for Settings page).
  */
-export async function getAccounts(): Promise<AccountsResponse> {
-  const res = await fetch('/api/accounts', { credentials: 'include' })
+export async function getAccounts(includeHidden = false): Promise<AccountsResponse> {
+  const url = includeHidden ? '/api/accounts?include_hidden=true' : '/api/accounts'
+  const res = await fetch(url, { credentials: 'include' })
   return res.json()
 }
 

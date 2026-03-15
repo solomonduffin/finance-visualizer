@@ -362,7 +362,7 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
 
   async function loadAccounts() {
     try {
-      const data = await getAccounts()
+      const data = await getAccounts(true)
       setAccounts(data)
     } catch {
       // Silently fail; component just won't render accounts
@@ -487,13 +487,43 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
   async function handleTypeChange(id: string, newType: PanelType) {
     setSavingId(id)
     setErrorId(null)
+
+    // Optimistic: move account to new group immediately to avoid animation glitch
+    setAccounts((prev) => {
+      if (!prev) return prev
+      let movedAccount: AccountItem | null = null
+      const result: AccountsResponse = { liquid: [], savings: [], investments: [], other: [] }
+      for (const panel of PANEL_ORDER) {
+        result[panel] = prev[panel].filter((a) => {
+          if (a.id === id) {
+            movedAccount = a
+            return false
+          }
+          return true
+        })
+      }
+      if (movedAccount) {
+        result[newType] = [...result[newType], movedAccount]
+      }
+      return result
+    })
+
     try {
       const overrideValue = PANEL_TYPE_TO_OVERRIDE[newType]
-      await updateAccount(id, { account_type_override: overrideValue })
-      // Re-fetch to get the correct grouping from the server
-      await loadAccounts()
+      const updated = await updateAccount(id, { account_type_override: overrideValue })
+      // Sync server response into the optimistically-moved position
+      setAccounts((prev) => {
+        if (!prev) return prev
+        const result: AccountsResponse = { liquid: [], savings: [], investments: [], other: [] }
+        for (const panel of PANEL_ORDER) {
+          result[panel] = prev[panel].map((a) => (a.id === updated.id ? updated : a))
+        }
+        return result
+      })
     } catch {
       setErrorId(id)
+      // Rollback: re-fetch from server
+      await loadAccounts()
     } finally {
       setSavingId(null)
     }

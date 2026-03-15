@@ -267,3 +267,35 @@ func TestUpdateAccount_EmptyBody(t *testing.T) {
 		t.Errorf("expected 400 for empty body, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestUpdateAccount_ReturnsBalance(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Chase Checking", "account_type": "checking", "currency": "USD", "org_name": "Chase"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1234.56", "balance_date": "2024-01-01"},
+	})
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/accounts/chk1",
+		strings.NewReader(`{"display_name": "My Checking"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiURLParam(req, "id", "chk1")
+
+	w := httptest.NewRecorder()
+	handlers.UpdateAccount(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp accountItemJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if resp.Balance != "1234.56" {
+		t.Errorf("balance: got %q, want %q", resp.Balance, "1234.56")
+	}
+}
