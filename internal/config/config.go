@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -21,6 +22,10 @@ type Config struct {
 
 	// DBPath is the file path for the SQLite database. Defaults to "data/finance.db".
 	DBPath string
+
+	// SyncHour is the hour of day (0-23, local time) at which the daily SimpleFIN
+	// sync runs. Sourced from SYNC_HOUR env var. Defaults to 6 (6:00 AM).
+	SyncHour int
 }
 
 // Load reads configuration from environment variables and returns a validated Config.
@@ -66,6 +71,15 @@ func Load() (*Config, error) {
 		dbPath = "data/finance.db"
 	}
 	cfg.DBPath = dbPath
+
+	// SYNC_HOUR defaults to 6; invalid values fall back to 6 (not an error).
+	syncHour := 6
+	if h := os.Getenv("SYNC_HOUR"); h != "" {
+		if parsed, err := strconv.Atoi(h); err == nil {
+			syncHour = parsed
+		}
+	}
+	cfg.SyncHour = syncHour
 
 	return cfg, nil
 }

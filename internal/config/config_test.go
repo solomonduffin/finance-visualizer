@@ -9,7 +9,7 @@ import (
 
 func clearEnv(t *testing.T) {
 	t.Helper()
-	vars := []string{"PASSWORD", "PASSWORD_HASH", "JWT_SECRET", "PORT", "DB_PATH"}
+	vars := []string{"PASSWORD", "PASSWORD_HASH", "JWT_SECRET", "PORT", "DB_PATH", "SYNC_HOUR"}
 	for _, v := range vars {
 		os.Unsetenv(v)
 	}
@@ -18,6 +18,51 @@ func clearEnv(t *testing.T) {
 			os.Unsetenv(v)
 		}
 	})
+}
+
+func TestLoad_SyncHourDefault(t *testing.T) {
+	clearEnv(t)
+	os.Setenv("PASSWORD", "mysecretpassword")
+	os.Setenv("JWT_SECRET", "myjwtsecret")
+	// SYNC_HOUR not set — should default to 6
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SyncHour != 6 {
+		t.Errorf("expected default SyncHour=6, got %d", cfg.SyncHour)
+	}
+}
+
+func TestLoad_SyncHourCustom(t *testing.T) {
+	clearEnv(t)
+	os.Setenv("PASSWORD", "mysecretpassword")
+	os.Setenv("JWT_SECRET", "myjwtsecret")
+	os.Setenv("SYNC_HOUR", "14")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.SyncHour != 14 {
+		t.Errorf("expected SyncHour=14, got %d", cfg.SyncHour)
+	}
+}
+
+func TestLoad_SyncHourInvalid(t *testing.T) {
+	clearEnv(t)
+	os.Setenv("PASSWORD", "mysecretpassword")
+	os.Setenv("JWT_SECRET", "myjwtsecret")
+	os.Setenv("SYNC_HOUR", "abc")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error (invalid SYNC_HOUR should not fail): %v", err)
+	}
+	if cfg.SyncHour != 6 {
+		t.Errorf("expected SyncHour=6 for invalid input, got %d", cfg.SyncHour)
+	}
 }
 
 func TestConfig_Load_Success(t *testing.T) {
