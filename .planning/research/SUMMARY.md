@@ -1,196 +1,187 @@
 # Project Research Summary
 
-**Project:** Finance Visualizer — Self-Hosted Personal Finance Dashboard
-**Domain:** Read-only personal finance aggregator (single-user, self-hosted, SimpleFIN-based)
+**Project:** Finance Visualizer v1.1
+**Domain:** Self-hosted personal finance dashboard — feature expansion of an existing v1.0 product
 **Researched:** 2026-03-15
-**Confidence:** HIGH (stack), MEDIUM (features, pitfalls), HIGH (architecture)
+**Confidence:** HIGH
 
 ## Executive Summary
 
-This project is a self-hosted, read-only personal finance dashboard that pulls data from SimpleFIN and visualizes net worth across liquid, savings, and investment account panels. The stack is fully decided: Go (chi router) for the backend, React/TypeScript with Vite and Tailwind v4 for the frontend, SQLite with WAL mode for persistence, and Nginx + Docker for deployment. The architecture is a classic layered backend (HTTP handler → service → repository) with a background cron goroutine for daily SimpleFIN polling and a React SPA that reads exclusively from local SQLite via REST API. All library versions are confirmed current (Go 1.24+, modernc.org/sqlite v1.46.1, chi v5.2.5, Tailwind v4.2).
+Finance Visualizer v1.1 adds 7 new capabilities to an existing, production Go/React/SQLite dashboard. The existing stack is validated and stable; only two net-new dependencies are required (go-mail for SMTP email, react-querybuilder for the alert rule builder UI). The project is well-positioned because the v1.0 codebase is clean, the existing data model already contains most of what the new features need, and the feature scope maps directly onto well-understood domain patterns from Empower, Monarch Money, and ProjectionLab. All 7 features were analyzed against the actual codebase, not just theoretical requirements.
 
-The most important architectural commitment is the snapshot-based balance history model: the cron job must store one `balance_snapshots` row per account per day from the very first sync. This data cannot be backfilled retroactively if omitted early. The "liquid balance" differentiator — checking minus credit card balances including pending — is the core value proposition and is straightforward to compute using the `balance` field SimpleFIN provides directly. Budgeting, transaction categorization, and multi-user are explicitly out of scope for v1.
+The recommended build order starts with account renaming and soft-delete safety (low-risk, high-value, establishes the data foundation), moves through sync diagnostics and growth indicators (quick wins on existing data), then crypto aggregation and net worth drill-down (analytics expansion), and finishes with the alert system and projection engine (complex new subsystems that benefit from the earlier groundwork). No feature requires a full architectural overhaul — each integrates as an extension of the existing handler and sync patterns.
 
-The key risks are data integrity (append-only snapshot constraint must be enforced from day one, not retrofitted), credential security (SimpleFIN access URL is a bearer token and must never be committed to git), and auth correctness (bcrypt + rate-limited login must be in place before network exposure). All three risks are preventable with correct initial design and are not recoverable cheaply after the fact.
+The dominant risks are data integrity and security. The existing hard-delete of stale accounts will destroy user-configured data (display names, APY settings, alert rules) on any SimpleFIN outage; this must be converted to a soft-delete before any user-owned per-account metadata is introduced. Expression injection in alert rules is a critical security risk (reference: CVE-2025-68613, CVSS 9.9) that is fully prevented by storing alert conditions as structured JSON rather than free-text expressions. SMTP credentials must never be returned in API responses. All three risks are preventable by design decisions made at schema time.
+
+---
 
 ## Key Findings
 
 ### Recommended Stack
 
-The backend is Go with the chi router ecosystem (chi, cors, httplog, httprate, jwtauth), modernc.org/sqlite (pure Go — no CGo, critical for Docker multi-arch), golang-migrate for schema migrations, shopspring/decimal for financial arithmetic, and robfig/cron for the daily sync goroutine. The frontend is React 18 + TypeScript 5 + Vite 6 + Tailwind v4 with recharts for charts, TanStack Query v5 for server state, react-router-dom v6 for routing, and zustand for global UI state. The build pipeline is a 3-stage Dockerfile: Node builder → Go builder → distroless final image. sqlc is recommended for type-safe SQL generation.
+The existing stack (Go 1.25, go-chi, React 19, TypeScript 5.9, Tailwind v4, SQLite via modernc.org/sqlite, recharts 3.x, shopspring/decimal, JWT auth, Docker, Nginx) requires exactly two additions. `github.com/wneessen/go-mail v0.7.1` handles SMTP email for alert notifications — it is the only actively maintained Go SMTP library with proper STARTTLS support, required for Protonmail Bridge integration. `react-querybuilder v8.14.0` provides the alert rule expression builder UI; it explicitly supports React 19, ships unstyled (Tailwind-compatible), and eliminates 2-4 weeks of custom UI work. All projection math uses the existing `shopspring/decimal` with iterative compounding (no `math.Pow`). All new charts use the existing `recharts` (dashed lines via `strokeDasharray`). The `expr-lang/expr` library handles safe alert expression evaluation on the Go side.
 
-Two non-obvious but critical choices: (1) use `modernc.org/sqlite` not `mattn/go-sqlite3` — the mattn driver requires CGo, which breaks cross-compilation and bloats the Docker builder stage; (2) use `shopspring/decimal` not `float64` for all financial values — binary floating point cannot represent `0.1` exactly and balance errors will accumulate.
+**Core new technologies:**
+- `github.com/wneessen/go-mail v0.7.1`: SMTP sending — only maintained Go SMTP library with STARTTLS; required for Protonmail Bridge
+- `react-querybuilder v8.14.0`: Alert rule builder UI — React 19 native, Tailwind-compatible, eliminates custom operator/group-nesting parser work
+- `github.com/expr-lang/expr`: Alert expression evaluation — sandboxed, prevents injection, used by Google Cloud/Uber in production
 
-**Core technologies:**
-- Go 1.24 + chi v5.2.5: backend API and background jobs — single binary, low overhead, excellent stdlib HTTP
-- modernc.org/sqlite v1.46.1: persistence — pure Go, no CGo, required for clean Docker multi-arch builds
-- golang-migrate v4.19.1: schema migrations — explicitly supports modernc.org/sqlite (use `database/sqlite` driver name, not `sqlite3`)
-- React 18 + Vite 6 + Tailwind v4.2: frontend SPA — CSS-first Tailwind config, native Vite plugin, no tailwind.config.js
-- recharts 2.x: charts — composable SVG API covering all 3 required chart types (line, donut, area)
-- shopspring/decimal v1.4.0: financial arithmetic — never use float64 for money
-- go-chi/jwtauth v5.4.0: JWT auth middleware — do NOT also add golang-jwt as a separate dep
+**No new library needed for:** financial projections (use existing shopspring/decimal with iterative monthly compounding), new chart types (recharts ComposedChart + `strokeDasharray` covers all cases), SimpleFIN holdings (existing net/http client, just add struct fields and remove `balances-only=1`).
 
 ### Expected Features
 
-**Must have (table stakes — v1 launch):**
-- SimpleFIN integration with daily cron and append-only snapshot storage — everything depends on this
-- Liquid balance panel: checking minus credit cards (the core differentiator)
-- Savings and investments panels: aggregated balances by account type
-- Balance history line charts — daily snapshots enable these; missing from launch = permanently missing historical data
-- Net worth breakdown donut chart — table stakes visualization for any finance dashboard
-- Password authentication (bcrypt + rate-limited login) — required before network exposure
-- Data freshness indicator ("Last synced: X hours ago") — trust signal; users notice when it's missing
-- Dark/light mode toggle — self-hosters check dashboards at night
-- Docker containerized deployment — required for self-hosted distribution
+**Must have (table stakes):**
+- Account renaming (`display_name` column) — every finance app supports this; institutional names like "SAVINGS PLUS ACCOUNT" are cryptic
+- Growth rate indicators (+2.3% this month badges on panel cards) — a dashboard without trend signals feels static
+- Sync failure diagnostics — the `sync_log` table already captures everything; purely a new endpoint and frontend display
+- Crypto aggregation by institution — multiple Coinbase wallets should appear as one grouped line in the Investments panel
 
-**Should have (v1.x — add after core is validated):**
-- Panel drill-down views with per-account detail
-- APY display on savings accounts
-- Investment growth/loss per account (with correct "includes contributions" labeling)
-- Investment performance over time chart
-- Mobile-responsive layout
+**Should have (competitive differentiators):**
+- Net worth drill-down page — turns a single number into a historical insight view; no self-hosted tool does this well
+- Alert rules with email notifications — expression-based threshold alerts; no self-hosted finance dashboard currently offers this
+- Projected net worth with income modeling — deterministic compound interest projection; ProjectionLab charges $100/year for equivalent functionality
 
-**Defer (v2+):**
-- Budgeting module — separate product scope, doubles complexity
-- Transaction categorization — needs ML/rules engine; not needed for balance/net-worth dashboard
-- Push notifications — external service dependencies
-- Multi-user/family sharing — significant scope expansion
-- PWA manifest
+**Explicitly deferred (anti-features):**
+- Real-time crypto price feeds — conflicts with SimpleFIN daily sync cadence; adds external API dependency
+- Monte Carlo simulation — dedicated-product scope (ProjectionLab territory); deterministic projections are sufficient and honest
+- Holdings-level investment detail — SimpleFIN `balances-only=1` suppresses holdings; availability varies by institution; building UI around inconsistent data creates a half-broken feature
+- SMS notifications — requires paid third-party service; email + email-to-SMS gateway is the right answer for self-hosted
+
+**Feature dependency order matters:** Account renaming must come first. It introduces `display_name` which crypto aggregation, alert rule displays, and projection account config all reference from day one. Building it last means retrofitting display names into three already-shipped systems.
 
 ### Architecture Approach
 
-The system follows a strict layered pattern: Nginx serves static React assets and reverse-proxies `/api/*` to a Go backend; the Go backend separates HTTP handlers, service layer (business logic), repository layer (SQL), and a cron worker (SimpleFIN sync) all within the same process. SQLite is the sole datastore. The React SPA communicates exclusively via REST JSON; there is no WebSocket requirement since data is not real-time. Backend and frontend can be built in parallel once the DB schema is finalized.
+All 7 features integrate into the existing handler-per-resource architecture without requiring a service layer refactor. Features with real business logic (alerts, projections) get dedicated packages (`internal/alerts/`, `internal/projections/`) with pure functions — testable without HTTP. The sync flow gains a post-sync hook that calls `alerts.EvaluateAll()` after each successful sync, outside the sync mutex, so SMTP latency never blocks sync completion. Three new database migrations (000002 through 000004) introduce `display_name` and `hidden_at`, alert tables, and projection tables respectively. Thirteen new API endpoints are added; three existing endpoints are extended.
 
-**Major components:**
-1. Nginx — TLS termination, static file serving (`/*`), reverse proxy (`/api/*`)
-2. Go HTTP layer (chi) — auth middleware, request routing, JSON serialization
-3. Go Service layer — balance aggregation, net worth computation, account classification
-4. Go Cron worker — daily SimpleFIN pull, snapshot insertion, full history on first run
-5. SimpleFIN HTTP client (`internal/simplefin/client.go`) — custom ~80 line client; no third-party Go SimpleFIN library is mature enough
-6. Repository layer — SQL queries via sqlc-generated code against SQLite
-7. SQLite — append-only balance snapshots, accounts, transactions
-8. React SPA — Dashboard, panel drill-downs, recharts visualizations
+**Major new components:**
+1. `internal/alerts/` (NEW) — evaluator (expr-lang sandboxed expressions), engine (NORMAL/TRIGGERED state machine, state transitions), notifier (go-mail SMTP with context deadline)
+2. `internal/projections/` (NEW) — compound interest engine using shopspring/decimal iterative compounding (360 multiplications for 30-year monthly — microseconds, not a concern), income allocation
+3. Migrations 000002-000004 (NEW) — `display_name`/`hidden_at` on accounts, `alert_rules`/`alert_history` tables, `projection_config`/`income_allocations` tables
+4. Four new frontend pages — NetWorthDrillDown, Alerts, Projections, plus Settings extensions for sync diagnostics, SMTP config, and account names
+5. Sync hook (MODIFY `sync.go`) — calls `alerts.EvaluateAll()` after sync, outside mutex; SMTP failure is logged but never fails the sync
+
+**Key patterns to follow:**
+- Soft-delete accounts with `hidden_at DATETIME` rather than hard-deleting — prerequisite for all user-owned per-account data
+- Alert conditions stored as structured JSON, not free-text — validated with `expr.Compile()` at write time, evaluated at sync time
+- `COALESCE(display_name, name)` in every query that returns account names
+- `shopspring/decimal` for all financial arithmetic — no `float64` anywhere in the financial pipeline
+- Aggregation keyed on `org_slug` (stable domain-like identifier), not `org_name` (human-readable, can change between syncs)
 
 ### Critical Pitfalls
 
-1. **Snapshot clobbering with upsert logic** — Use `INSERT ... ON CONFLICT DO NOTHING` with a `UNIQUE(account_id, snapshot_date)` constraint on `balance_snapshots`. Never use `INSERT OR REPLACE` for snapshots. If this is wrong from day one, historical chart data is permanently lossy. Address in Phase 1 (schema).
+1. **Stale account hard-delete destroys user data** — The existing `removeStaleAccounts()` permanently deletes accounts that disappear from SimpleFIN, including all `balance_snapshots`. With v1.1 user-owned metadata, a temporary SimpleFIN outage erases display names, alert rule references, and APY settings permanently. Fix before any user-owned data is introduced: add `hidden_at DATETIME` column and convert to soft-delete. Auto-restore when account reappears on subsequent sync. Manual "permanently delete" in settings.
 
-2. **SimpleFIN access URL in version control** — The access URL is a long-lived bearer token for all connected financial accounts. `.gitignore` the `.env` file from the first commit; never store the URL in the database in plaintext. Address in Phase 2 before writing any fetch logic.
+2. **Expression injection in alert rules** — Using a general-purpose expression engine for alert evaluation exposes `JWT_SECRET`, `PASSWORD_HASH`, and SMTP credentials via `os.Getenv()`. CVE-2025-68613 in n8n (CVSS 9.9) is exactly this attack pattern. Fix: store conditions as structured JSON `{"metric": "liquid", "operator": "<", "value": 5000}` and evaluate with a Go switch statement or the sandboxed `expr-lang/expr`. Never accept free-text expressions from users.
 
-3. **No cron error isolation or sync log** — A single failing account can abort the entire daily sync silently. Wrap each fetch in an error boundary, write a `sync_log` table from the start, and surface sync status in the UI. Address in Phase 2.
+3. **Alert flooding from threshold oscillation** — A balance hovering at the alert threshold sends an email on every sync cycle where the condition is true. Fix: implement a per-rule state machine (NORMAL → TRIGGERED, TRIGGERED → NORMAL) that fires exactly once per threshold crossing and once per recovery. Establish baseline on rule creation so a rule already in a triggered state does not fire immediately when saved.
 
-4. **Pending transaction double-counting in liquid balance** — SimpleFIN's `balance` field typically already includes pending transactions. Do not add pending transaction amounts on top. Validate the computed liquid balance against the actual bank app balance after first real fetch.
+4. **SMTP credentials exposed via API or logs** — The `settings` table pattern makes it tempting to add `smtp_pass` as a key-value pair and return it in `GET /api/settings`. Fix: never return the SMTP password in API responses (return `smtp_configured: true/false` only). Store credentials as environment variables in `docker-compose.prod.yml` matching the existing `JWT_SECRET`/`PASSWORD_HASH` pattern. Never pass password to `slog` fields.
 
-5. **SQLite WAL mode not set** — Without `PRAGMA journal_mode=WAL`, the daily cron write lock blocks all HTTP reads. Set WAL mode and `busy_timeout` at connection open time. Address in Phase 1 (DB setup). One line of code; painful to debug if missed.
+5. **SQLite migrations failing on populated tables** — New `NOT NULL` columns without a `DEFAULT` fail against the v1.0 production database. A dirty migration state prevents the application from starting. Fix: every `ALTER TABLE ADD COLUMN` must include a `DEFAULT`. Test all migrations against a database seeded with v1.0 realistic data, not just empty `:memory:` test databases.
+
+---
 
 ## Implications for Roadmap
 
-Based on research, the dependency chain is clear: schema must be correct before services, services before cron, cron before there is real data to display, and the frontend can proceed in parallel with the backend service/cron work once the API contract is defined.
+Based on combined research, the natural phase structure is driven by dependency chains, not arbitrary grouping. Account renaming is the keystone — every other feature that stores per-account user configuration is blocked until `display_name` exists and soft-delete is in place to protect it.
 
-### Phase 1: Foundation — Database, Auth, and Docker Skeleton
+### Phase 1: Data Foundation
+**Rationale:** Two schema changes must land before any user-owned data is introduced. Soft-delete must exist before `display_name` (otherwise a SimpleFIN outage on day two destroys the user's renamed accounts). `display_name` must exist before alerts and projections reference it.
+**Delivers:** Accounts survive SimpleFIN outages with all config intact; users can rename accounts to human-readable names; all new features have a stable `display_name` to reference from day one.
+**Addresses:** Account Renaming (table stakes)
+**Avoids:** Stale account hard-delete destroying user data (Pitfall 1); SQLite migration failures on populated tables (Pitfall 5)
+**Research flag:** Standard patterns — SQLite `ALTER TABLE ADD COLUMN` and soft-delete are well-established. No phase research needed.
 
-**Rationale:** Schema correctness cannot be retrofitted cheaply. The append-only snapshot model, WAL mode, and auth must be right before any other code is written on top of them. Docker setup here establishes the build/run pattern all subsequent phases use.
-**Delivers:** Working SQLite schema with migrations, bcrypt auth with rate-limited login, JWT middleware protecting all `/api/*` routes, WAL mode enabled, Docker Compose dev environment running.
-**Addresses:** Password authentication, Docker deployment (table stakes)
-**Avoids:** Snapshot clobbering (UNIQUE constraint from day one), SQLite read-blocking (WAL pragma from day one), brute-force on login (httprate middleware from day one), Docker root user issue (non-root USER in Dockerfile)
+### Phase 2: Operational Quick Wins
+**Rationale:** Sync diagnostics and growth indicators are independent features with zero external dependencies. Both read from tables that already exist and already have the necessary data. High visible value for minimal risk — good early-phase momentum.
+**Delivers:** Users can diagnose expired SimpleFIN tokens from the Settings UI; panel cards show "+2.3% this month" trend badges.
+**Addresses:** Sync Failure Diagnostics (table stakes), Growth Rate Indicators (table stakes)
+**Avoids:** SimpleFIN credential leakage in sync error text — sanitize `error_text` before storing (Pitfall 4); growth indicator division-by-zero and misleading percentages on new/credit-card accounts (Pitfall 8)
+**Research flag:** Standard patterns. No phase research needed.
 
-### Phase 2: SimpleFIN Integration and Data Pipeline
+### Phase 3: Analytics Expansion
+**Rationale:** Crypto aggregation and net worth drill-down both operate exclusively on existing snapshot data with no new background processing or external integrations. Lower risk profile than Phases 4-5.
+**Delivers:** Coinbase wallets grouped into one combined investment line with expand-to-detail; dedicated `/net-worth` page with historical stacked area chart and time range picker.
+**Addresses:** Crypto Aggregation (table stakes), Net Worth Drill-Down (differentiator)
+**Avoids:** Aggregation merging accounts of different types at the same institution by keying on `(org_slug, account_type)` (Pitfall 5); `org_name` instability breaking grouping by using `org_slug` as the stable key (Pitfall 6); drill-down performance with 1000+ data points via server-side resolution parameter
+**Research flag:** Validate `org_slug` stability across institutions in practice — the SimpleFIN spec guarantees it is a domain-like identifier but real-world behavior may vary.
 
-**Rationale:** Without real data flowing, nothing else can be built or validated. This phase is the highest-risk phase (external API, credential handling, cron reliability) and must be addressed before any UI work invests in a data model.
-**Delivers:** Custom SimpleFIN HTTP client, daily cron goroutine with error isolation, `sync_log` table and observability, full history pull on first run, accounts and balance snapshots populating the DB.
-**Uses:** modernc.org/sqlite, golang-migrate, shopspring/decimal, robfig/cron, golang.org/x/crypto (not for passwords here — for potential future use), internal/simplefin/client.go
-**Implements:** Cron worker, SimpleFIN HTTP client, ingest layer
-**Avoids:** Access URL in git (establish .env pattern), pending transaction double-counting (use balance field directly), silent cron failures (sync_log from start), setup token vs. access URL confusion
+### Phase 4: Alert System
+**Rationale:** The alert system is the most architecturally novel addition — new package, new background hook, external SMTP dependency, state machine, expression evaluator. Isolated as its own phase to focus testing effort. Account renaming (Phase 1) must be complete so alert expressions can reference display names.
+**Delivers:** User-defined threshold alerts that fire once on crossing and once on recovery, delivered via email to any SMTP-configured address (Protonmail Bridge or standard SMTP).
+**Addresses:** Alert Rules with Email Notifications (differentiator)
+**Avoids:** Expression injection via structured JSON storage and expr-lang sandboxing (Pitfall 2); alert flooding via state machine (Pitfall 3); SMTP credential exposure via environment variable pattern and masked API responses (Pitfall 10)
+**Research flag:** Phase research recommended — Protonmail Bridge Docker service-to-service networking; `expr-lang/expr` sandboxing scope vs. `react-querybuilder` JSON output format alignment.
 
-### Phase 3: Backend API Layer
-
-**Rationale:** Once data is in SQLite, the service and HTTP layers can be built and tested against real data. This phase delivers the full REST API that the frontend depends on.
-**Delivers:** All `/api/*` endpoints: accounts list, balance history (snapshots), net worth aggregation, account type classification, sync status. Full Handler → Service → Repository layering.
-**Uses:** go-chi/chi, go-chi/httplog, go-chi/jwtauth, sqlc-generated repository code
-**Implements:** HTTP layer, Service layer, Repository layer
-**Avoids:** Fat handlers (business logic in service layer, not handlers), N+1 queries (sqlc + explicit queries)
-
-### Phase 4: React Frontend — Dashboard and Core Charts
-
-**Rationale:** Frontend can begin with MSW mock responses while Phase 3 is in progress, then wire to the real API. Core charts (balance history line, net worth donut) are table stakes; their underlying snapshot data is already flowing from Phase 2.
-**Delivers:** Dashboard page with liquid/savings/investments panels, balance history line charts, net worth donut chart, data freshness indicator, dark/light mode toggle, loading/empty states.
-**Uses:** React 18, Vite 6, Tailwind v4, recharts, TanStack Query v5, zustand, react-router-dom
-**Implements:** React SPA, frontend/api/client.ts typed wrappers, panel components, chart wrappers
-**Avoids:** JWT in localStorage (use HttpOnly cookies), investment charts labeled as "performance" (label as "Account Value" with contributions caveat), missing empty states (design for "awaiting first sync"), UTC date offset on chart axes
-
-### Phase 5: Drill-Down Views and Polish
-
-**Rationale:** Once the aggregate dashboard is validated and trusted, add per-account detail. This phase adds the v1.x differentiators without blocking the core launch.
-**Delivers:** Panel drill-down pages (per-account balances, transaction lists), APY display on savings, investment growth/loss with correct labeling, mobile-responsive layout.
-**Addresses:** Panel drill-down views, APY display, investment growth/loss (v1.x features)
-**Avoids:** Investment chart mislabeling (cost basis unavailable via SimpleFIN — label correctly)
-
-### Phase 6: Production Hardening and Deployment
-
-**Rationale:** Security and operational concerns deferred from earlier phases — non-root Docker user, Nginx TLS, CSRF protection, structured error responses — are addressed here before any networked self-hosting.
-**Delivers:** Non-root Docker user, Nginx TLS configuration, rate limiting verified, error messages sanitized (no stack traces to client), docker-compose production configuration with named volumes.
-**Avoids:** Docker root container, plaintext network exposure, detailed errors leaking to client
+### Phase 5: Projection Engine
+**Rationale:** The projection engine is the most standalone feature — it reads current balances and its own config tables with no dependency on alerts or other v1.1 features. Saved for last because it requires the most complex frontend configuration UI. Account renaming (Phase 1) ensures the projection config table shows human-readable names.
+**Delivers:** Forward-looking net worth projection page with per-account APY settings, reinvestment toggles (compound vs. simple), income allocation modeling, and time horizon selector (1y/5y/10y/30y).
+**Addresses:** Projected Net Worth with Income Modeling (differentiator)
+**Avoids:** float64 precision errors in 30-year projections via iterative shopspring/decimal compounding — never use `math.Pow` (Pitfall 7); misleading projections presented as guarantees via explicit "Estimates" disclaimers and dashed chart lines
+**Research flag:** Standard patterns — iterative compound interest math is unambiguous. No phase research needed.
 
 ### Phase Ordering Rationale
 
-- Schema first because snapshot append-only constraint and WAL mode cannot be retrofitted without data loss or tricky migrations
-- SimpleFIN before API because real data is needed to validate service-layer business logic (especially the liquid balance calculation)
-- Backend API before (or in parallel with) frontend because the frontend API client types are derived from the backend contract
-- Drill-downs deferred to Phase 5 because they depend on the aggregate view being trusted, and they share the same snapshot infrastructure already built
-- Production hardening last because most security concerns are one-line additions (rate limiting, WAL, non-root user) that are lower friction once the functional system is working
+- **Soft-delete before display_name before everything else:** The dependency chain is `hidden_at` → `display_name` → alerts/projections. Reversing this order means retrofitting data safety into features already live with real user data.
+- **Quick wins in Phase 2:** Sync diagnostics and growth indicators deliver immediate user value with zero external dependencies. Building them early establishes momentum before the high-complexity phases.
+- **Analytics before alerts:** Crypto aggregation and drill-down are read-only analytics with no background processing or external integrations. Lower risk profile — ship these before introducing the SMTP subsystem.
+- **Alerts before projections:** The alert system introduces the most new moving parts (background hook, state machine, email). Completing it in isolation keeps the risk contained. Projections in Phase 5 are computation-intensive but architecturally simpler.
+- **No feature blocked on another after Phase 1:** Once `display_name` and soft-delete are in place, Phases 2-5 are theoretically order-independent from a data perspective — the phase ordering above is risk-driven, not dependency-driven beyond Phase 1.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 2 (SimpleFIN Integration):** The SimpleFIN protocol `balance-date` field semantics, per-account `errors` array structure, and rate-limit behavior should be verified against the current spec at `simplefin.org/protocol.html` before implementation. All pitfalls research on this integration was from training knowledge (MEDIUM confidence).
-- **Phase 2 (SimpleFIN client):** No mature Go SimpleFIN library exists; custom client implementation is required. Estimate ~80 lines but validate the claim + setup flow against current docs.
+- **Phase 4 (Alert System):** Protonmail Bridge Docker networking configuration for service-to-service SMTP; `expr-lang/expr` sandboxing scope and whether it exposes environment variables; `react-querybuilder` JSON output format and whether it maps cleanly to the Go evaluator's expected input.
 
-Phases with standard patterns (research-phase not required):
-- **Phase 1 (Foundation):** Go + SQLite + chi auth is extremely well-documented. WAL mode, bcrypt, httprate are standard patterns.
-- **Phase 3 (Backend API):** Layered Go HTTP service is the canonical pattern. sqlc codegen is well-documented.
-- **Phase 4 (React Frontend):** React + Vite + Tailwind v4 + recharts + TanStack Query is a well-trodden combination with abundant documentation.
-- **Phase 6 (Deployment):** Docker non-root user, Nginx TLS, multi-stage builds are standard DevOps patterns.
+Phases with standard patterns (skip research-phase):
+- **Phase 1 (Data Foundation):** SQLite `ALTER TABLE ADD COLUMN` with DEFAULT and soft-delete are universally documented patterns.
+- **Phase 2 (Quick Wins):** Both features are read-only over existing tables with established query patterns.
+- **Phase 3 (Analytics):** Recharts stacked area charts and server-side resolution control are well-documented.
+- **Phase 5 (Projections):** Iterative compound interest with shopspring/decimal is mathematically unambiguous; the reference answer (30-year $100k at 7% = $761,225.50) is a reliable verification test.
+
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All library versions verified via pkg.go.dev and official docs. Version compatibility matrix explicitly checked. |
-| Features | MEDIUM | Based on training knowledge of the personal finance domain (Mint, Empower, Firefly III, Actual Budget). Table stakes are HIGH confidence; differentiators and competitor specifics are MEDIUM. |
-| Architecture | HIGH | Stack is fully decided; patterns (layered backend, snapshot model, cron goroutine) are well-established for this class of app. |
-| Pitfalls | MEDIUM | WebSearch was unavailable; findings from training knowledge. Security and SQLite pitfalls are HIGH confidence (well-established patterns). SimpleFIN-specific pitfalls (pending semantics, balance-date) are MEDIUM — should be verified against current SimpleFIN spec. |
+| Stack | HIGH | All libraries verified against official sources; version compatibility confirmed; only 2 net-new dependencies identified |
+| Features | HIGH | Codebase fully inspected; existing schema documented; competitor analysis cross-referenced; feature dependency graph validated against code |
+| Architecture | HIGH | All 7 features analyzed file-by-file; exact handler/package/migration mapping provided; no speculative components |
+| Pitfalls | HIGH | Based on direct codebase analysis plus CVE research (CVE-2025-68613) and real-world precedent (Actual Budget PR #2836 for null org_slug) |
 
-**Overall confidence:** HIGH for the technical approach; MEDIUM for SimpleFIN protocol specifics.
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **SimpleFIN `balance` field semantics for pending transactions:** The research conclusion is to use `balance` directly (not add pending on top), but this varies by institution bridge. Validate against the current SimpleFIN protocol spec and cross-check with a real account during Phase 2 integration testing.
-- **SimpleFIN `balance-date` field:** Store `balance_date` separately from `fetched_at` in the schema. The protocol may report balances dated to the previous business day. Verify behavior during Phase 2 and ensure the freshness indicator reflects `balance_date` not `fetched_at`.
-- **SimpleFIN rate limits:** The daily cron schedule assumes SimpleFIN rate limits allow at least one fetch per day. Verify before committing to the cron schedule; the cron interval should be configurable via environment variable from Phase 1.
-- **Crypto account support via SimpleFIN:** FEATURES.md identifies this as a potential low-cost differentiator "if SimpleFIN exposes crypto account data." Verify during Phase 2 whether any connected crypto accounts appear in the SimpleFIN response.
-- **Tailwind v4 production stability:** v4 was released January 2025 and is recommended for greenfield projects. Confirm no known issues with the `@tailwindcss/vite` plugin and Vite 6 at project start.
+- **Protonmail Bridge Docker networking:** The Bridge Docker container (`shenxn/protonmail-bridge`) is community-maintained, not officially by Proton. The exact Docker Compose service-to-service SMTP hostname and whether the container requires interactive setup must be validated during Phase 4 planning before committing to the docker-compose pattern.
+- **expr-lang vs. react-querybuilder JSON format alignment:** ARCHITECTURE.md recommends `expr-lang/expr` for Go-side evaluation and `react-querybuilder` for the frontend builder. The exact JSON format react-querybuilder exports needs confirmation that it maps cleanly to what expr-lang expects, or a translation layer must be planned in Phase 4.
+- **SimpleFIN holdings data availability by institution:** The protocol supports holdings (confirmed via spec), but `balances-only=1` in the existing client suppresses them. Real-world availability varies by institution. Do not build the investment drill-down around holdings data for v1.1; account-level balances are reliable.
+- **Credit card balance sign semantics in growth indicators:** Going from -$500 to -$200 is a $300 improvement, but naive `(current-previous)/previous*100` gives -60%. Phase 2 must explicitly address sign handling for negative-balance accounts.
+
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `pkg.go.dev/modernc.org/sqlite` — v1.46.1 confirmed, pure Go, SQLite 3.51.2 (Feb 2026)
-- `pkg.go.dev/github.com/go-chi/chi/v5` — v5.2.5 confirmed (Feb 2026)
-- `pkg.go.dev/github.com/go-chi/jwtauth/v5` — v5.4.0 confirmed, uses lestrrat-go/jwx (Feb 2026)
-- `pkg.go.dev/github.com/golang-migrate/migrate/v4/database/sqlite` — v4.19.1, explicitly uses modernc.org/sqlite (Nov 2025)
-- `pkg.go.dev/golang.org/x/crypto` — v0.49.0, bcrypt available (Mar 2026)
-- `pkg.go.dev/github.com/shopspring/decimal` — v1.4.0 confirmed (Apr 2024)
-- `tailwindcss.com/docs/installation` — v4.2 confirmed, Vite plugin documented (Mar 2026)
-- SQLite WAL mode: `sqlite.org/wal.html` — concurrent read/write behavior
+- Direct codebase analysis — all Go handlers, sync logic, schema, frontend components (read from repository during research)
+- [wneessen/go-mail GitHub releases](https://github.com/wneessen/go-mail/releases) — v0.7.1, Go 1.24+ requirement, CVE-2025-59937 security fix
+- [go-mail pkg.go.dev](https://pkg.go.dev/github.com/wneessen/go-mail) — API reference, auth methods, STARTTLS support
+- [react-querybuilder npm](https://www.npmjs.com/package/react-querybuilder) — v8.14.0, React 19 support confirmed
+- [react-querybuilder docs](https://react-querybuilder.js.org/) — TypeScript reference, custom fields/operators, JSON export format
+- [SimpleFIN Protocol Specification](https://www.simplefin.org/protocol.html) — holdings schema, account fields, org.id semantics
+- [SimpleFIN GitHub protocol.md](https://github.com/simplefin/simplefin.github.com/blob/master/protocol.md) — authoritative spec source
+- [shopspring/decimal pkg.go.dev](https://pkg.go.dev/github.com/shopspring/decimal) — Pow fractional exponent limitation, PowWithPrecision workaround
+- [expr-lang/expr](https://github.com/expr-lang/expr) — sandboxed expression evaluation for Go, used by Google Cloud/Uber/ByteDance
 
 ### Secondary (MEDIUM confidence)
-- SimpleFIN protocol specification (`simplefin.org/protocol.html`) — training knowledge; balance-date and per-account errors array should be verified against current spec
-- Personal finance product feature analysis — training knowledge of Mint, Empower, Firefly III, Actual Budget, Lunch Money, Monarch Money (knowledge cutoff August 2025)
-- Snapshot-based balance history pattern — observed in Monarch Money, Copilot, YNAB community discussions
-- go-chi/cors v1.2.2, httplog v3.3.0, httprate v0.15.0, sqlc v1.30.0 — verified via pkg.go.dev
+- [CVE-2025-68613: RCE via Expression Injection in n8n](https://nvd.nist.gov/vuln/detail/CVE-2025-68613) — CVSS 9.9; informs alert rule design decision to use structured JSON
+- [Actual Budget PR #2836](https://github.com/actualbudget/actual/pull/2836) — real-world evidence that SimpleFIN `org_slug` can be null; informs fallback handling
+- [Protonmail Bridge Docker (shenxn)](https://github.com/shenxn/protonmail-bridge-docker) — community-maintained Docker container; setup pattern needs Phase 4 validation
+- [recharts DashedLineChart example](https://recharts.github.io/en-US/examples/DashedLineChart/) — `strokeDasharray` support confirmed for projection visualization
 
-### Tertiary (LOW confidence)
-- SimpleFIN rate limit behavior — inferred from protocol design; needs empirical verification
-- SimpleFIN crypto account data availability — inferred; needs testing with real crypto-connected accounts
+### Tertiary (LOW confidence / training knowledge)
+- Empower, Monarch Money, Firefly III, ProjectionLab feature comparison — training knowledge as of May 2025; specific UI details may have changed but broad feature characterization is reliable
 
 ---
 *Research completed: 2026-03-15*
