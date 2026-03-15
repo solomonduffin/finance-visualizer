@@ -2,7 +2,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./tmp/server ./cmd/server && ./tmp/server"
+  cmd = "go build -buildvcs=false -o ./tmp/server ./cmd/server && ./tmp/server"
   bin = "./tmp/server"
   include_ext = ["go", "sql"]
   exclude_dir = ["tmp", "frontend", "node_modules", "data"]

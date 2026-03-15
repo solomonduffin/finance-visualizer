@@ -1,7 +1,7 @@
 # Stage 1: dev — Go backend with Air for hot reload
-FROM golang:1.23-alpine AS dev
+FROM golang:1.25-alpine AS dev
 
-RUN go install github.com/air-verse/air@latest
+RUN apk add --no-cache git && go install github.com/air-verse/air@latest
 
 WORKDIR /app
 CMD ["air"]
@@ -16,7 +16,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 3: backend-build — Compile the Go binary
-FROM golang:1.23-alpine AS backend-build
+FROM golang:1.25-alpine AS backend-build
 
 WORKDIR /app
 COPY go.mod go.sum ./
