@@ -29,7 +29,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Auth & UX
 
 - [x] **AUTH-01**: App is protected by a simple password gate
-- [ ] **UX-01**: Dashboard shows data freshness indicator ("Last updated: X ago")
+- [x] **UX-01**: Dashboard shows data freshness indicator ("Last updated: X ago")
 - [x] **UX-02**: App shows appropriate loading/empty states on first run before data exists
 - [x] **UX-03**: Dark/light mode toggle
 - [x] **UX-04**: Mobile-responsive layout
@@ -87,7 +87,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-04 | Phase 3 | Complete |
 | VIZ-01 | Phase 4 | Pending |
 | VIZ-02 | Phase 4 | Pending |
-| UX-01 | Phase 4 | Pending |
+| UX-01 | Phase 4 | Complete |
 | UX-02 | Phase 4 | Complete |
 | UX-03 | Phase 4 | Complete |
 | UX-04 | Phase 4 | Complete |
