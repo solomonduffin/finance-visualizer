@@ -365,6 +365,8 @@ func TestInferAccountType(t *testing.T) {
 		{"My Checking", "checking"},
 		{"Savings Account", "savings"},
 		{"Visa Credit Card", "credit"},
+		{"Chase Sapphire Preferred (9243)", "credit"},
+		{"Platinum Card", "credit"},
 		{"Brokerage", "investment"},
 		{"IRA", "investment"},
 		{"401k", "investment"},

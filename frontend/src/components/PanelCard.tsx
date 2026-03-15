@@ -5,6 +5,7 @@ interface Account {
   id: string
   name: string
   balance: string
+  org_name: string
 }
 
 interface PanelCardProps {
@@ -44,7 +45,7 @@ export function PanelCard({ panelKey, total, accounts }: PanelCardProps) {
               className="flex justify-between items-center text-sm"
             >
               <span className="text-gray-600 dark:text-gray-300 truncate pr-2">
-                {account.name}
+                {account.org_name ? `${account.org_name} – ${account.name}` : account.name}
               </span>
               <span className="text-gray-800 dark:text-gray-200 font-medium shrink-0">
                 {formatCurrency(account.balance)}

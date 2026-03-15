@@ -108,6 +108,7 @@ export interface AccountItem {
   name: string
   balance: string
   account_type: string
+  org_name: string
 }
 
 export interface AccountsResponse {

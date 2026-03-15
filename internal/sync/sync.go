@@ -26,7 +26,8 @@ func InferAccountType(name string) string {
 	switch {
 	case strings.Contains(lower, "saving"):
 		return "savings"
-	case strings.Contains(lower, "credit") || strings.Contains(lower, "card"):
+	case strings.Contains(lower, "credit") || strings.Contains(lower, "card") ||
+		strings.Contains(lower, "sapphire") || strings.Contains(lower, "platinum"):
 		return "credit"
 	case strings.Contains(lower, "invest") || strings.Contains(lower, "brokerage") ||
 		strings.Contains(lower, "ira") || strings.Contains(lower, "401"):
