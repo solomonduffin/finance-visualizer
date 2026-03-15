@@ -7,6 +7,27 @@ import * as client from '../api/client'
 
 vi.mock('../api/client')
 
+vi.mock('../components/BalanceLineChart', () => ({
+  BalanceLineChart: (props: any) => (
+    <div data-testid="balance-line-chart" data-has-history={!!props.history} />
+  ),
+}))
+
+vi.mock('../components/NetWorthDonut', () => ({
+  NetWorthDonut: (props: any) => (
+    <div
+      data-testid="net-worth-donut"
+      data-liquid={props.liquid}
+      data-savings={props.savings}
+      data-investments={props.investments}
+    />
+  ),
+}))
+
+vi.mock('../hooks/useDarkMode', () => ({
+  useDarkMode: () => ({ isDark: false, toggle: vi.fn() }),
+}))
+
 const mockGetSummary = vi.mocked(client.getSummary)
 const mockGetAccounts = vi.mocked(client.getAccounts)
 const mockGetBalanceHistory = vi.mocked(client.getBalanceHistory)
@@ -193,6 +214,71 @@ describe('Dashboard', () => {
         expect(screen.getByText('Savings')).toBeInTheDocument()
         expect(screen.getByText('Investments')).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('charts section', () => {
+    it('renders BalanceLineChart when data is loaded', async () => {
+      mockGetSummary.mockResolvedValue(summaryWithSync)
+      mockGetAccounts.mockResolvedValue(accountsResponse)
+      mockGetBalanceHistory.mockResolvedValue(historyResponse)
+
+      renderDashboard()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('balance-line-chart')).toBeInTheDocument()
+      })
+    })
+
+    it('renders NetWorthDonut when data is loaded', async () => {
+      mockGetSummary.mockResolvedValue(summaryWithSync)
+      mockGetAccounts.mockResolvedValue(accountsResponse)
+      mockGetBalanceHistory.mockResolvedValue(historyResponse)
+
+      renderDashboard()
+
+      await waitFor(() => {
+        expect(screen.getByTestId('net-worth-donut')).toBeInTheDocument()
+      })
+    })
+
+    it('passes summary values to NetWorthDonut', async () => {
+      mockGetSummary.mockResolvedValue(summaryWithSync)
+      mockGetAccounts.mockResolvedValue(accountsResponse)
+      mockGetBalanceHistory.mockResolvedValue(historyResponse)
+
+      renderDashboard()
+
+      await waitFor(() => {
+        const donut = screen.getByTestId('net-worth-donut')
+        expect(donut.getAttribute('data-liquid')).toBe('5000.00')
+        expect(donut.getAttribute('data-savings')).toBe('20000.00')
+        expect(donut.getAttribute('data-investments')).toBe('50000.00')
+      })
+    })
+
+    it('passes history data to BalanceLineChart', async () => {
+      mockGetSummary.mockResolvedValue(summaryWithSync)
+      mockGetAccounts.mockResolvedValue(accountsResponse)
+      mockGetBalanceHistory.mockResolvedValue(historyResponse)
+
+      renderDashboard()
+
+      await waitFor(() => {
+        const lineChart = screen.getByTestId('balance-line-chart')
+        expect(lineChart.getAttribute('data-has-history')).toBe('true')
+      })
+    })
+
+    it('does not render charts in loading state', () => {
+      mockGetSummary.mockReturnValue(new Promise(() => {}))
+      mockGetAccounts.mockReturnValue(new Promise(() => {}))
+      mockGetBalanceHistory.mockReturnValue(new Promise(() => {}))
+
+      renderDashboard()
+
+      expect(screen.queryByTestId('balance-line-chart')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('net-worth-donut')).not.toBeInTheDocument()
     })
   })
 })

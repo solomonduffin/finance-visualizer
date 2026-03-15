@@ -4,12 +4,16 @@ import type { SummaryResponse, AccountsResponse, BalanceHistoryResponse } from '
 import { SkeletonDashboard } from '../components/SkeletonDashboard'
 import { EmptyState } from '../components/EmptyState'
 import { PanelCard } from '../components/PanelCard'
+import { BalanceLineChart } from '../components/BalanceLineChart'
+import { NetWorthDonut } from '../components/NetWorthDonut'
+import { useDarkMode } from '../hooks/useDarkMode'
 import { timeAgo } from '../utils/time'
 
 const PANEL_KEYS = ['liquid', 'savings', 'investments'] as const
 type PanelKey = typeof PANEL_KEYS[number]
 
 export default function Dashboard() {
+  const { isDark } = useDarkMode()
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [accounts, setAccounts] = useState<AccountsResponse | null>(null)
   const [history, setHistory] = useState<BalanceHistoryResponse | null>(null)
@@ -110,10 +114,22 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Charts placeholder — filled in Plan 03 */}
-        <div id="charts-section" className="mt-8">
-          {/* Charts added in Plan 03 */}
-        </div>
+        {/* Charts section */}
+        {history && summary && (
+          <div className="mt-8 flex flex-col lg:flex-row gap-6">
+            <div className="lg:w-[65%] w-full">
+              <BalanceLineChart history={history} isDark={isDark} />
+            </div>
+            <div className="lg:w-[35%] w-full">
+              <NetWorthDonut
+                liquid={summary.liquid}
+                savings={summary.savings}
+                investments={summary.investments}
+                isDark={isDark}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
