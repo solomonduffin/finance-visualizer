@@ -32,7 +32,7 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
 	// CORS middleware — allow Vite dev server origin with credentials
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -54,6 +54,7 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
 		r.Post("/api/sync/now", handlers.SyncNow(database))
 		r.Get("/api/summary", handlers.GetSummary(database))
 		r.Get("/api/accounts", handlers.GetAccounts(database))
+		r.Patch("/api/accounts/{id}", handlers.UpdateAccount(database))
 		r.Get("/api/balance-history", handlers.GetBalanceHistory(database))
 	})
 
