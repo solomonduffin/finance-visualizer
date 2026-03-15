@@ -137,13 +137,13 @@ Plans:
 **Plans**: TBD
 
 ### Phase 7: Analytics Expansion
-**Goal**: Crypto investors see aggregated institution-level balances instead of fragmented wallet lines, and all users can explore detailed net worth history on a dedicated page
+**Goal**: Users can create custom account groups to organize accounts (e.g., combining multiple Coinbase wallets into one "Coinbase" group), and all users can explore detailed net worth history on a dedicated page
 **Depends on**: Phase 5
 **Requirements**: ACCT-03, ACCT-04, ACCT-05, INSIGHT-02, INSIGHT-03, INSIGHT-04, INSIGHT-05
 **Success Criteria** (what must be TRUE):
-  1. Multiple crypto accounts from the same institution (e.g., three Coinbase wallets) appear as a single combined line in the investments panel
-  2. The aggregated crypto entry shows a combined balance history line on the investments chart
-  3. User can expand an aggregated crypto entry to see the individual wallet balances beneath it
+  1. User can create a named account group in Settings (e.g., "Coinbase") and assign accounts to it
+  2. Account groups appear as a single combined line in their panel, showing the summed balance of member accounts
+  3. User can expand a group to see individual account balances beneath it
   4. Clicking the net worth donut chart navigates to a dedicated net worth page
   5. The net worth page shows a historical line chart with per-panel breakdown, summary statistics (current value, period change in dollars and percent, all-time high), and a time range selector (30d, 90d, 6m, 1y, all)
 **Plans**: TBD
