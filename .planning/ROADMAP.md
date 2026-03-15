@@ -79,7 +79,12 @@ Plans:
   4. A "Last updated" indicator shows how long ago the most recent sync ran
   5. Before the first sync completes, the app shows a clear empty/loading state rather than blank panels or errors
   6. The user can toggle between dark and light mode, and the layout is usable on a mobile screen
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Dark mode infrastructure, API client extensions, reusable components (PanelCard, SkeletonDashboard, EmptyState), utilities
+- [ ] 04-02-PLAN.md — Dashboard page with data fetching, panel rendering, freshness indicator, loading/empty/error states, NavBar dark mode toggle
+- [ ] 04-03-PLAN.md — Balance line chart (tabbed AreaChart) and net worth donut chart, wired into Dashboard with visual verification
 
 ## Progress
 
@@ -91,4 +96,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
 | 2. Data Pipeline | 3/3 | Complete   | 2026-03-15 |
 | 3. Backend API | 2/2 | Complete   | 2026-03-15 |
-| 4. Frontend Dashboard | 0/TBD | Not started | - |
+| 4. Frontend Dashboard | 0/3 | Planning complete | - |
