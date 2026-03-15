@@ -64,6 +64,8 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 	syncMu.Lock()
 	defer syncMu.Unlock()
 
+	slog.Info("sync: starting")
+
 	// Read access URL from settings.
 	var accessURL string
 	err := db.QueryRowContext(ctx,
@@ -114,7 +116,9 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 	}
 
 	// Fetch accounts from SimpleFIN.
-	accountSet, err := simplefin.FetchAccounts(accessURL, startDate)
+	// Per the SimpleFIN spec, the /accounts endpoint is at {ACCESS_URL}/accounts.
+	accountsURL := strings.TrimRight(accessURL, "/") + "/accounts"
+	accountSet, err := simplefin.FetchAccounts(accountsURL, startDate)
 	if err != nil {
 		errText := err.Error()
 		finalize(0, 0, &errText)
@@ -134,6 +138,7 @@ func SyncOnce(ctx context.Context, db *sql.DB) error {
 	}
 
 	finalize(fetched, failed, nil)
+	slog.Info("sync: complete", "fetched", fetched, "failed", failed)
 	return nil
 }
 

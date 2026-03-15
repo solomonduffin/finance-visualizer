@@ -86,7 +86,7 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
 
         {/* SimpleFIN Configuration Card */}
         <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">SimpleFIN Access URL</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">SimpleFIN Connection</h2>
 
           <form onSubmit={handleSave} noValidate>
             <div className="mb-4">
@@ -94,16 +94,19 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
                 htmlFor="access-url"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Access URL
+                Setup Token or Access URL
               </label>
               <input
                 id="access-url"
                 type="text"
                 value={accessUrl}
                 onChange={(e) => setAccessUrl(e.target.value)}
-                placeholder="https://..."
+                placeholder="Paste setup token or access URL"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Get a setup token from SimpleFIN Bridge, or paste an existing access URL.
+              </p>
             </div>
 
             {error && (

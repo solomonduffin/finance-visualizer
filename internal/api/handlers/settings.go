@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/solomon/finance-visualizer/internal/simplefin"
 	gosync "github.com/solomon/finance-visualizer/internal/sync"
 )
 
@@ -82,11 +83,22 @@ func SaveSettings(database *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// If the input looks like a setup token (base64, no "://"), claim it first.
+		accessURL := req.AccessURL
+		if simplefin.IsSetupToken(accessURL) {
+			claimed, err := simplefin.ClaimSetupToken(accessURL)
+			if err != nil {
+				http.Error(w, `{"error":"failed to claim setup token: `+err.Error()+`"}`, http.StatusBadRequest)
+				return
+			}
+			accessURL = claimed
+		}
+
 		// Upsert the access URL into settings.
 		_, err := database.ExecContext(r.Context(),
 			`INSERT INTO settings (key, value) VALUES ('simplefin_access_url', ?)
 			 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-			req.AccessURL,
+			accessURL,
 		)
 		if err != nil {
 			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)

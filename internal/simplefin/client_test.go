@@ -193,6 +193,77 @@ func TestFetchAccounts_NetworkError(t *testing.T) {
 	}
 }
 
+func TestClaimSetupToken_Success(t *testing.T) {
+	// Fake access URL that the claim endpoint returns.
+	fakeAccessURL := "https://user:pass@beta-bridge.simplefin.org/simplefin"
+
+	claimSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fakeAccessURL))
+	}))
+	defer claimSrv.Close()
+
+	// Encode the claim server URL as a base64 setup token.
+	setupToken := base64.StdEncoding.EncodeToString([]byte(claimSrv.URL))
+
+	got, err := simplefin.ClaimSetupToken(setupToken)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != fakeAccessURL {
+		t.Errorf("expected access URL %q, got %q", fakeAccessURL, got)
+	}
+}
+
+func TestClaimSetupToken_InvalidBase64(t *testing.T) {
+	_, err := simplefin.ClaimSetupToken("not-valid-base64!!!")
+	if err == nil {
+		t.Fatal("expected error for invalid base64, got nil")
+	}
+	if !strings.Contains(err.Error(), "base64") {
+		t.Errorf("expected error to mention base64, got: %v", err)
+	}
+}
+
+func TestClaimSetupToken_ClaimFails(t *testing.T) {
+	claimSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("token already claimed"))
+	}))
+	defer claimSrv.Close()
+
+	setupToken := base64.StdEncoding.EncodeToString([]byte(claimSrv.URL))
+	_, err := simplefin.ClaimSetupToken(setupToken)
+	if err == nil {
+		t.Fatal("expected error on 403 response, got nil")
+	}
+	if !strings.Contains(err.Error(), "403") {
+		t.Errorf("expected error to contain '403', got: %v", err)
+	}
+}
+
+func TestIsSetupToken(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"aHR0cHM6Ly9iZXRhLWJyaWRnZS5zaW1wbGVmaW4ub3Jn", true},
+		{"https://user:pass@beta-bridge.simplefin.org/simplefin", false},
+		{"http://localhost:8080/simplefin", false},
+		{"", false},
+		{"  aHR0cHM6Ly9iZXRhLWJyaWRnZS5zaW1wbGVmaW4ub3Jn  ", true},
+	}
+	for _, tt := range tests {
+		got := simplefin.IsSetupToken(tt.input)
+		if got != tt.expected {
+			t.Errorf("IsSetupToken(%q) = %v, want %v", tt.input, got, tt.expected)
+		}
+	}
+}
+
 // Ensure JSON marshalling round-trips the struct correctly (types check).
 func TestAccountSet_JSONTypes(t *testing.T) {
 	var as simplefin.AccountSet
