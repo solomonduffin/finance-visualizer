@@ -1,0 +1,63 @@
+# Project State
+
+## Project Reference
+
+See: .planning/PROJECT.md (updated 2026-03-15)
+
+**Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
+**Current focus:** Phase 1 — Foundation
+
+## Current Position
+
+Phase: 1 of 4 (Foundation)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-03-15 — Roadmap created, ready for phase planning
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: —
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
+
+**Recent Trend:**
+- Last 5 plans: —
+- Trend: —
+
+*Updated after each plan completion*
+
+## Accumulated Context
+
+### Decisions
+
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- [Pre-planning]: Use modernc.org/sqlite (not mattn/go-sqlite3) — required for CGo-free Docker builds
+- [Pre-planning]: SQLite WAL mode must be set at connection open time — one-line fix, hard to debug if missed
+- [Pre-planning]: Use shopspring/decimal for all financial values — float64 binary precision errors accumulate
+- [Pre-planning]: SimpleFIN `balance` field used directly for liquid balance — do not add pending transaction amounts on top (validate against real account on first sync)
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+- [Phase 2]: SimpleFIN `balance-date` field semantics and rate limit behavior need verification against current SimpleFIN protocol spec before implementing the cron worker
+- [Phase 2]: No mature Go SimpleFIN library exists; custom ~80-line client required
+
+## Session Continuity
+
+Last session: 2026-03-15
+Stopped at: Roadmap created — 4 phases, 16/16 requirements mapped
+Resume file: None
