@@ -46,7 +46,7 @@ Plans:
   3. The daily cron goroutine runs automatically and appends a new snapshot row per account each day
   4. Each account has at most one snapshot per day (duplicate fetches do not clobber or duplicate data)
   5. Sync failures for individual accounts are logged and do not abort the entire sync run
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 02-01-PLAN.md — SimpleFIN HTTP client + sync orchestration engine (SyncOnce, RunScheduler, account upsert, idempotent snapshots)
@@ -85,6 +85,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-15 |
-| 2. Data Pipeline | 1/3 | In Progress|  |
+| 2. Data Pipeline | 2/3 | In Progress|  |
 | 3. Backend API | 0/TBD | Not started | - |
 | 4. Frontend Dashboard | 0/TBD | Not started | - |

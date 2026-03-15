@@ -10,7 +10,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Data Pipeline
 
 - [x] **DATA-01**: App connects to SimpleFIN and fetches account data via read-only token
-- [ ] **DATA-02**: Daily cron goroutine fetches data automatically and stores snapshots in SQLite
+- [x] **DATA-02**: Daily cron goroutine fetches data automatically and stores snapshots in SQLite
 - [x] **DATA-03**: First sync pulls up to one month of historical data from SimpleFIN
 - [x] **DATA-04**: Each daily fetch creates append-only balance snapshots (one row per account per day)
 
@@ -78,7 +78,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-01 | Phase 1 | Complete |
 | DEPLOY-01 | Phase 1 | Complete |
 | DATA-01 | Phase 2 | Complete |
-| DATA-02 | Phase 2 | Pending |
+| DATA-02 | Phase 2 | Complete |
 | DATA-03 | Phase 2 | Complete |
 | DATA-04 | Phase 2 | Complete |
 | DASH-01 | Phase 3 | Pending |
