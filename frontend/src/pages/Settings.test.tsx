@@ -24,12 +24,7 @@ const configuredResponse: client.SettingsResponse = {
 
 describe('Settings', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
+    vi.resetAllMocks()
   })
 
   describe('TestSettings_RendersForm', () => {

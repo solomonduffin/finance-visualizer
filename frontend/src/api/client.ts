@@ -52,3 +52,44 @@ export async function checkAuth(): Promise<boolean> {
     return false
   }
 }
+
+export interface SettingsResponse {
+  configured: boolean
+  last_sync_at: string | null
+  last_sync_status: string | null
+}
+
+/**
+ * GET /api/settings
+ * Returns current SimpleFIN configuration and last sync status.
+ */
+export async function getSettings(): Promise<SettingsResponse> {
+  const res = await fetch('/api/settings', { credentials: 'include' })
+  return res.json()
+}
+
+/**
+ * POST /api/settings
+ * Saves the SimpleFIN access URL. Triggers an immediate first sync if new URL.
+ */
+export async function saveSettings(accessUrl: string): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ access_url: accessUrl }),
+  })
+  return res.json()
+}
+
+/**
+ * POST /api/sync/now
+ * Triggers an on-demand background sync.
+ */
+export async function triggerSync(): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/sync/now', {
+    method: 'POST',
+    credentials: 'include',
+  })
+  return res.json()
+}
