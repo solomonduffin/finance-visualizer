@@ -21,9 +21,8 @@ type accountItemJSON struct {
 
 // accountsResponseJSON mirrors the grouped response from GetAccounts.
 type accountsResponseJSON struct {
-	Checking    []accountItemJSON `json:"checking"`
+	Liquid      []accountItemJSON `json:"liquid"`
 	Savings     []accountItemJSON `json:"savings"`
-	Credit      []accountItemJSON `json:"credit"`
 	Investments []accountItemJSON `json:"investments"`
 	Other       []accountItemJSON `json:"other"`
 }
@@ -59,14 +58,11 @@ func TestGetAccounts_GroupedByType(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	if len(resp.Checking) != 1 {
-		t.Errorf("expected 1 checking account, got %d", len(resp.Checking))
+	if len(resp.Liquid) != 2 {
+		t.Errorf("expected 2 liquid accounts (checking + credit), got %d", len(resp.Liquid))
 	}
 	if len(resp.Savings) != 1 {
 		t.Errorf("expected 1 savings account, got %d", len(resp.Savings))
-	}
-	if len(resp.Credit) != 1 {
-		t.Errorf("expected 1 credit account, got %d", len(resp.Credit))
 	}
 	if len(resp.Investments) != 1 {
 		t.Errorf("expected 1 investment account, got %d", len(resp.Investments))
@@ -95,10 +91,10 @@ func TestGetAccounts_AccountFields(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	if len(resp.Checking) != 1 {
-		t.Fatalf("expected 1 checking account, got %d", len(resp.Checking))
+	if len(resp.Liquid) != 1 {
+		t.Fatalf("expected 1 liquid account, got %d", len(resp.Liquid))
 	}
-	a := resp.Checking[0]
+	a := resp.Liquid[0]
 	if a.ID != "chk1" {
 		t.Errorf("id: got %q, want %q", a.ID, "chk1")
 	}
@@ -141,11 +137,11 @@ func TestGetAccounts_LatestBalance(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	if len(resp.Checking) != 1 {
-		t.Fatalf("expected 1 checking account, got %d", len(resp.Checking))
+	if len(resp.Liquid) != 1 {
+		t.Fatalf("expected 1 liquid account, got %d", len(resp.Liquid))
 	}
-	if resp.Checking[0].Balance != "999.99" {
-		t.Errorf("balance: got %q, want \"999.99\" (latest snapshot)", resp.Checking[0].Balance)
+	if resp.Liquid[0].Balance != "999.99" {
+		t.Errorf("balance: got %q, want \"999.99\" (latest snapshot)", resp.Liquid[0].Balance)
 	}
 }
 
@@ -166,11 +162,11 @@ func TestGetAccounts_NoSnapshotDefaultsToZero(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	if len(resp.Checking) != 1 {
-		t.Fatalf("expected 1 checking account, got %d", len(resp.Checking))
+	if len(resp.Liquid) != 1 {
+		t.Fatalf("expected 1 liquid account, got %d", len(resp.Liquid))
 	}
-	if resp.Checking[0].Balance != "0" {
-		t.Errorf("balance: got %q, want \"0\" for account with no snapshots", resp.Checking[0].Balance)
+	if resp.Liquid[0].Balance != "0" {
+		t.Errorf("balance: got %q, want \"0\" for account with no snapshots", resp.Liquid[0].Balance)
 	}
 }
 
@@ -193,7 +189,7 @@ func TestGetAccounts_EmptyGroupsAreArraysNotNull(t *testing.T) {
 	}
 
 	// Empty groups must be "[]", not "null"
-	for _, key := range []string{"savings", "credit", "investments", "other"} {
+	for _, key := range []string{"savings", "investments", "other"} {
 		if string(rawMap[key]) != "[]" {
 			t.Errorf("%s: got %s, want [] (empty array, not null)", key, rawMap[key])
 		}
@@ -216,14 +212,11 @@ func TestGetAccounts_NoAccounts(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	if len(resp.Checking) != 0 {
-		t.Errorf("expected empty checking, got %d accounts", len(resp.Checking))
+	if len(resp.Liquid) != 0 {
+		t.Errorf("expected empty liquid, got %d accounts", len(resp.Liquid))
 	}
 	if len(resp.Savings) != 0 {
 		t.Errorf("expected empty savings, got %d accounts", len(resp.Savings))
-	}
-	if len(resp.Credit) != 0 {
-		t.Errorf("expected empty credit, got %d accounts", len(resp.Credit))
 	}
 	if len(resp.Investments) != 0 {
 		t.Errorf("expected empty investments, got %d accounts", len(resp.Investments))
@@ -257,10 +250,10 @@ func TestGetAccounts_OrderedByNameWithinGroup(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	if len(resp.Checking) != 3 {
-		t.Fatalf("expected 3 checking accounts, got %d", len(resp.Checking))
+	if len(resp.Liquid) != 3 {
+		t.Fatalf("expected 3 liquid accounts, got %d", len(resp.Liquid))
 	}
-	names := []string{resp.Checking[0].Name, resp.Checking[1].Name, resp.Checking[2].Name}
+	names := []string{resp.Liquid[0].Name, resp.Liquid[1].Name, resp.Liquid[2].Name}
 	expected := []string{"Alpha Credit Union", "Mid State Bank", "Zeta Bank"}
 	for i, want := range expected {
 		if names[i] != want {

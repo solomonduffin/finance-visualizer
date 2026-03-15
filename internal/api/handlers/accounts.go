@@ -16,9 +16,8 @@ type accountItem struct {
 }
 
 type accountsResponse struct {
-	Checking    []accountItem `json:"checking"`
+	Liquid      []accountItem `json:"liquid"`
 	Savings     []accountItem `json:"savings"`
-	Credit      []accountItem `json:"credit"`
 	Investments []accountItem `json:"investments"`
 	Other       []accountItem `json:"other"`
 }
@@ -30,9 +29,8 @@ type accountsResponse struct {
 func GetAccounts(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		resp := accountsResponse{
-			Checking:    []accountItem{},
+			Liquid:      []accountItem{},
 			Savings:     []accountItem{},
-			Credit:      []accountItem{},
 			Investments: []accountItem{},
 			Other:       []accountItem{},
 		}
@@ -87,12 +85,10 @@ func GetAccounts(database *sql.DB) http.HandlerFunc {
 			}
 
 			switch accountType {
-			case "checking":
-				resp.Checking = append(resp.Checking, item)
+			case "checking", "credit":
+				resp.Liquid = append(resp.Liquid, item)
 			case "savings":
 				resp.Savings = append(resp.Savings, item)
-			case "credit":
-				resp.Credit = append(resp.Credit, item)
 			case "investment":
 				resp.Investments = append(resp.Investments, item)
 			default:
