@@ -1,11 +1,13 @@
 import { PANEL_COLORS } from './panelColors'
 import { formatCurrency } from '../utils/format'
+import { getAccountDisplayName } from '../utils/account'
 
 interface Account {
   id: string
   name: string
   balance: string
   org_name: string
+  display_name?: string | null
 }
 
 interface PanelCardProps {
@@ -45,7 +47,7 @@ export function PanelCard({ panelKey, total, accounts }: PanelCardProps) {
               className="flex justify-between items-center text-sm"
             >
               <span className="text-gray-600 dark:text-gray-300 truncate pr-2">
-                {account.org_name ? `${account.org_name} – ${account.name}` : account.name}
+                {getAccountDisplayName(account)}
               </span>
               <span className="text-gray-800 dark:text-gray-200 font-medium shrink-0">
                 {formatCurrency(account.balance)}

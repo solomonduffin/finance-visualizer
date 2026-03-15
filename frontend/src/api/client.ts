@@ -82,11 +82,16 @@ export async function saveSettings(accessUrl: string): Promise<{ ok: boolean }> 
   return res.json()
 }
 
+export interface SyncResponse {
+  ok: boolean
+  restored?: string[]
+}
+
 /**
  * POST /api/sync/now
- * Triggers an on-demand background sync.
+ * Triggers an on-demand sync. Returns restored account names if any were unhidden.
  */
-export async function triggerSync(): Promise<{ ok: boolean }> {
+export async function triggerSync(): Promise<SyncResponse> {
   const res = await fetch('/api/sync/now', {
     method: 'POST',
     credentials: 'include',
@@ -120,6 +125,27 @@ export interface AccountsResponse {
   savings: AccountItem[]
   investments: AccountItem[]
   other: AccountItem[]
+}
+
+export interface UpdateAccountRequest {
+  display_name?: string | null
+  hidden?: boolean
+  account_type_override?: string | null
+}
+
+/**
+ * PATCH /api/accounts/:id
+ * Updates account metadata (display name, hidden state, type override).
+ */
+export async function updateAccount(id: string, data: UpdateAccountRequest): Promise<AccountItem> {
+  const res = await fetch(`/api/accounts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(`Failed to update account: ${res.status}`)
+  return res.json()
 }
 
 export interface HistoryPoint {

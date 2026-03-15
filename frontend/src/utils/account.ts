@@ -7,8 +7,8 @@ import type { AccountItem } from '../api/client'
  * - If display_name is null and org_name is empty, returns name.
  */
 export function getAccountDisplayName(
-  _account: Pick<AccountItem, 'display_name' | 'org_name' | 'name'>
+  account: Pick<AccountItem, 'display_name' | 'org_name' | 'name'>
 ): string {
-  // Stub: not implemented yet
-  return ''
+  if (account.display_name) return account.display_name
+  return account.org_name ? `${account.org_name} \u2013 ${account.name}` : account.name
 }
