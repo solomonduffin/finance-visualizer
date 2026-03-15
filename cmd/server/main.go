@@ -2,11 +2,14 @@ package main
 
 import (
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
+	"github.com/solomon/finance-visualizer/internal/api"
+	"github.com/solomon/finance-visualizer/internal/auth"
 	"github.com/solomon/finance-visualizer/internal/config"
 	"github.com/solomon/finance-visualizer/internal/db"
 )
@@ -53,6 +56,29 @@ func main() {
 	}
 	slog.Info("migrations complete")
 
-	// Placeholder: HTTP server will be wired in Plan 02.
-	slog.Info("server startup complete — HTTP server to be added in Plan 02", "port", cfg.Port)
+	// Seed the password hash into the settings table if not already present.
+	// This uses INSERT OR IGNORE so existing values are never overwritten.
+	_, err = database.Exec(
+		`INSERT OR IGNORE INTO settings (key, value) VALUES ('password_hash', ?)`,
+		cfg.PasswordHash,
+	)
+	if err != nil {
+		slog.Error("failed to seed password hash", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize the JWT auth package with the secret key.
+	auth.Init(cfg.JWTSecret)
+	slog.Info("auth initialized")
+
+	// Create the chi router with all middleware and routes.
+	router := api.NewRouter(auth.TokenAuth(), database)
+
+	// Start the HTTP server.
+	addr := ":" + cfg.Port
+	slog.Info("starting HTTP server", "addr", addr)
+	if err := http.ListenAndServe(addr, router); err != nil {
+		slog.Error("HTTP server error", "error", err)
+		os.Exit(1)
+	}
 }
