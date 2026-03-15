@@ -93,3 +93,65 @@ export async function triggerSync(): Promise<{ ok: boolean }> {
   })
   return res.json()
 }
+
+// ─── Dashboard Endpoints ────────────────────────────────────────────────────
+
+export interface SummaryResponse {
+  liquid: string
+  savings: string
+  investments: string
+  last_synced_at: string | null
+}
+
+export interface AccountItem {
+  id: string
+  name: string
+  balance: string
+  account_type: string
+}
+
+export interface AccountsResponse {
+  liquid: AccountItem[]
+  savings: AccountItem[]
+  investments: AccountItem[]
+  other: AccountItem[]
+}
+
+export interface HistoryPoint {
+  date: string
+  balance: string
+}
+
+export interface BalanceHistoryResponse {
+  liquid: HistoryPoint[]
+  savings: HistoryPoint[]
+  investments: HistoryPoint[]
+}
+
+/**
+ * GET /api/summary
+ * Returns total balances by panel category.
+ */
+export async function getSummary(): Promise<SummaryResponse> {
+  const res = await fetch('/api/summary', { credentials: 'include' })
+  return res.json()
+}
+
+/**
+ * GET /api/accounts
+ * Returns accounts grouped by panel category.
+ */
+export async function getAccounts(): Promise<AccountsResponse> {
+  const res = await fetch('/api/accounts', { credentials: 'include' })
+  return res.json()
+}
+
+/**
+ * GET /api/balance-history?days=N
+ * Returns balance history for the past N days (default 30).
+ */
+export async function getBalanceHistory(days?: number): Promise<BalanceHistoryResponse> {
+  const url = days !== undefined ? `/api/balance-history?days=${days}` : '/api/balance-history'
+  const res = await fetch(url, { credentials: 'include' })
+  return res.json()
+}
