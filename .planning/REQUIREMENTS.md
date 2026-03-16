@@ -46,8 +46,8 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 
 - [x] **ACCT-01**: User can set a custom display name for any connected account in settings
 - [x] **ACCT-02**: Custom display names appear everywhere the account is referenced (panels, charts, dropdowns, alerts, projections)
-- [ ] **ACCT-03**: User can create named account groups in Settings and assign accounts to them
-- [ ] **ACCT-04**: Account groups appear as a single combined line in their panel with summed balance
+- [x] **ACCT-03**: User can create named account groups in Settings and assign accounts to them
+- [x] **ACCT-04**: Account groups appear as a single combined line in their panel with summed balance
 - [ ] **ACCT-05**: User can expand an account group to see individual account balances beneath it
 
 ### Dashboard Insights
@@ -152,8 +152,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | ACCT-01 | Phase 5 | Complete |
 | ACCT-02 | Phase 5 | Complete |
-| ACCT-03 | Phase 7 | Pending |
-| ACCT-04 | Phase 7 | Pending |
+| ACCT-03 | Phase 7 | Complete |
+| ACCT-04 | Phase 7 | Complete |
 | ACCT-05 | Phase 7 | Pending |
 | INSIGHT-01 | Phase 6 | Complete |
 | INSIGHT-02 | Phase 7 | Complete |
