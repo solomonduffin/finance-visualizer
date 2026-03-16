@@ -50,7 +50,7 @@ Exceptions: none
 **Phase-specific spacing rules:**
 - Operand row vertical gap: `gap-2` (8px) between stacked operand rows in the expression builder
 - Builder section gap: `gap-4` (16px) between the "When", "Comparison", and "Actions" sections of the builder form
-- Alert rule card padding: `p-5` (20px) -- matches PanelCard convention for card-level padding
+- Alert rule card padding: `p-6` (24px) -- standard card-level padding from the lg spacing token
 - Alert history indent: `pl-4` (16px) left padding for expanded history entries within a rule card
 - Rule card list gap: `gap-4` (16px) between alert rule cards in the list
 - Settings SMTP form field gap: `mb-4` (16px) between form field groups, matching SimpleFIN Connection card pattern
@@ -82,7 +82,7 @@ Exceptions: none
 - History event timestamp: `text-xs font-normal text-gray-500 dark:text-gray-400` (12px, weight 400)
 - Builder form labels ("When", "is", "Threshold"): `text-sm font-semibold` (14px, weight 600)
 - Input field text: `text-sm font-normal` (14px, weight 400)
-- SMTP form labels: `text-sm font-medium` -- note: existing Settings uses `font-medium` (500) for form labels; this phase continues that convention for SMTP labels only since it is an extension of the existing Settings card pattern, not a new component. All new Phase 8 components use only 400/600.
+- SMTP form labels: `text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1` (14px, weight 600) -- consistent with builder form labels pattern; all Phase 8 components use only 400/600
 - Nav link "Alerts": `text-sm font-semibold` (14px, weight 600) -- matches "Net Worth" and "Settings" links
 
 ---
@@ -93,10 +93,10 @@ Exceptions: none
 |------|-------|-------|
 | Dominant (60%) | `gray-50` / `gray-950` (dark) | Alerts page background, Settings page background |
 | Secondary (30%) | `white` / `gray-900` (dark) | Rule cards, builder form container, SMTP config card |
-| Accent (10%) | `blue-600` / `blue-400` (dark) | "+ New Alert" button, "Save" buttons, toggle switches (on state), primary action CTA |
+| Accent (10%) | `blue-600` / `blue-400` (dark) | "+ New Alert" button, "Save Email Config" button, toggle switches (on state), primary action CTA |
 | Destructive | `red-600` / `red-400` (dark) | Delete rule button, "Triggered" status badge |
 
-Accent reserved for: "+ New Alert" CTA button, "Save Rule" button, "Save" button on SMTP config, toggle switch enabled state, "Test Email" button, focus rings on inputs, nav link hover states
+Accent reserved for: "+ New Alert" CTA button, "Save Rule" button, "Save Email Config" button on SMTP config, toggle switch enabled state, "Test Email" button, focus rings on inputs, nav link hover states
 
 **Phase-specific semantic colors:**
 
@@ -155,7 +155,7 @@ is:
 Options:
   [x] Notify on recovery
 
-[Save Rule] [Cancel]
+[Save Rule] [Discard Changes]
 ```
 
 **Rule name input:**
@@ -178,6 +178,7 @@ Options:
 - Remove button (all rows except the first): small "x" icon button
   - Style: `w-8 h-8 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors`
   - SVG: 16x16 X icon (stroke-based)
+  - Accessibility: `aria-label="Remove term"`
 - Add operand button: text-only link style below the operand rows
   - Text: "+ Add term"
   - Style: `text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer transition-colors`
@@ -202,12 +203,12 @@ Options:
 - "Save Rule" button (primary CTA):
   - Style: `bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`
   - Loading state: "Saving..." with `disabled`
-- "Cancel" button:
+- "Discard Changes" button:
   - Style: `py-2 px-4 rounded-lg text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`
 
 **Form container:**
 - Renders inline below the "+ New Alert" button or in place of a rule card when editing
-- Container: `bg-white dark:bg-gray-800 rounded-xl shadow-md p-5 border border-gray-200 dark:border-gray-700`
+- Container: `bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 border border-gray-200 dark:border-gray-700`
 - Sections separated by `space-y-4` (16px)
 
 **Validation:**
@@ -222,7 +223,7 @@ Options:
 
 **Layout:** Card row for each alert rule, rendered in a vertical list on the Alerts page.
 
-**Card container:** `bg-white dark:bg-gray-800 rounded-xl shadow-md p-5 border border-transparent dark:border-gray-700` (matches PanelCard)
+**Card container:** `bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 border border-transparent dark:border-gray-700` (matches PanelCard)
 
 **Collapsed state (default):**
 ```
@@ -237,14 +238,14 @@ Options:
   - Rule name: `text-sm font-semibold text-gray-900 dark:text-gray-100 truncate`
 - Right side: `flex items-center gap-3`
   - Status badge: pill badge
-    - Normal: `bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-0.5 rounded-full text-xs font-semibold`
-    - Triggered: `bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 px-2 py-0.5 rounded-full text-xs font-semibold`
+    - Normal: `bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-1 rounded-full text-xs font-semibold`
+    - Triggered: `bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 px-2 py-1 rounded-full text-xs font-semibold`
   - Toggle switch: identical to DashboardPreferences toggle (`role="switch"`, `aria-checked`, `w-10 h-[22px]`, blue-600 on, gray-300 off)
   - Actions menu: icon button with 3-dot vertical ellipsis SVG (16x16)
-    - Style: `p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`
+    - Style: `p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`
     - Dropdown menu on click: `absolute right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10`
-      - "Edit" option: `px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer`
-      - "Delete" option: `px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer`
+      - "Edit Rule" option: `px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer`
+      - "Delete Rule" option: `px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer`
 
 **Row 2 -- expression summary:** `text-sm text-gray-500 dark:text-gray-400 mt-1`
 - Format: human-readable summary of the operand expression
@@ -312,8 +313,8 @@ Options:
 **Delete confirmation:**
 - Inline confirmation within the dropdown menu area or a small confirmation banner below the card
 - Text: "Delete this rule? This cannot be undone."
-- Confirm button: "Delete" -- `text-sm font-semibold text-white bg-red-600 hover:bg-red-700 py-1.5 px-3 rounded-lg transition-colors`
-- Cancel button: "Cancel" -- `text-sm font-semibold text-gray-600 dark:text-gray-400 py-1.5 px-3`
+- Confirm button: "Delete Rule" -- `text-sm font-semibold text-white bg-red-600 hover:bg-red-700 py-2 px-4 rounded-lg transition-colors`
+- Cancel button: "Keep Rule" -- `text-sm font-semibold text-gray-600 dark:text-gray-400 py-2 px-4`
 
 ---
 
@@ -338,7 +339,7 @@ Options:
 
 **Each field follows existing Settings input pattern:**
 ```
-<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+<label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
   SMTP Host
 </label>
 <input class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
@@ -358,8 +359,8 @@ Options:
 - "Test Email" button (secondary action):
   - Style: `py-2 px-4 rounded-lg text-sm font-semibold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
   - Loading state: "Sending..." with `disabled`
-- "Save" button (primary action):
-  - Style: matches existing Settings "Save" button -- `bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`
+- "Save Email Config" button (primary action):
+  - Style: `bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`
   - Loading state: "Saving..." with `disabled`
 
 **Inline feedback (below buttons):**
@@ -394,7 +395,7 @@ Options:
 | Empty state body | Create your first alert to get notified when your balances cross a threshold. |
 | Empty state CTA | Create Alert |
 | Error state | Failed to load alerts |
-| Error action | Retry |
+| Error action | Retry Loading |
 | Loading state | (skeleton placeholders, no text) |
 | Builder: rule name label | Rule Name |
 | Builder: rule name placeholder | e.g., Low cash warning |
@@ -405,7 +406,7 @@ Options:
 | Builder: recovery toggle label | Notify on recovery |
 | Builder: save button (create) | Save Rule |
 | Builder: save button (edit) | Update Rule |
-| Builder: cancel button | Cancel |
+| Builder: cancel button | Discard Changes |
 | Builder: saving state | Saving... |
 | Card: status Normal | Normal |
 | Card: status Triggered | Triggered |
@@ -420,13 +421,14 @@ Options:
 | History: recovered label | Recovered |
 | History: value | at {formatted currency} |
 | Delete confirmation | Delete this rule? This cannot be undone. |
-| Delete confirm button | Delete |
-| Delete cancel button | Cancel |
+| Delete confirm button | Delete Rule |
+| Delete cancel button | Keep Rule |
 | Toggle enable aria-label | Enable alert rule |
 | Toggle disable aria-label | Disable alert rule |
 | Actions menu aria-label | Alert rule actions |
-| Edit action | Edit |
-| Delete action | Delete |
+| Edit action | Edit Rule |
+| Delete action | Delete Rule |
+| Remove operand aria-label | Remove term |
 | Settings: email section heading | Email Configuration |
 | Settings: SMTP host label | SMTP Host |
 | Settings: SMTP host placeholder | smtp.example.com |
@@ -444,7 +446,7 @@ Options:
 | Settings: test email sending | Sending... |
 | Settings: test email success | Test email sent successfully |
 | Settings: test email failure | Failed to send test email: {error} |
-| Settings: save email config button | Save |
+| Settings: save email config button | Save Email Config |
 | Settings: save email saving | Saving... |
 | Settings: save email success | Email configuration saved |
 | Settings: save email failure | Failed to save email configuration |
@@ -468,11 +470,11 @@ Options:
 - **Trigger:** Click the "+ New Alert" button at the top of the Alerts page
 - **Response:** AlertRuleForm slides into view below the header, button hides
 - **Animation:** Form fades in with a subtle slide-down (`opacity 0->1, translateY -8px->0`, 200ms ease-out). Motion-reduce: instant display.
-- **Cancel:** Clicking "Cancel" collapses the form, restores the "+ New Alert" button
+- **Cancel:** Clicking "Discard Changes" collapses the form, restores the "+ New Alert" button
 
 ### Expression Builder Operand Management
 - **Add operand:** Click "+ Add term" appends a new operand row with "+" operator and first available dropdown option
-- **Remove operand:** Click "x" button on a row removes it (minimum 1 row always present; remove button hidden on last remaining row)
+- **Remove operand:** Click "x" button (aria-label="Remove term") on a row removes it (minimum 1 row always present; remove button hidden on last remaining row)
 - **Toggle operator:** Click the +/- button on a row toggles between "+" and "-"
 - **Dropdown selection:** Standard `<select>` behavior; options grouped by optgroups
 
@@ -491,16 +493,16 @@ Options:
 - **Keyboard:** Enter/Space on the chevron/name toggles expansion
 
 ### Alert Rule Edit
-- **Trigger:** Click "Edit" from the actions dropdown menu
+- **Trigger:** Click "Edit Rule" from the actions dropdown menu
 - **Response:** Card content is replaced by AlertRuleForm pre-filled with the rule's current values
 - **Save:** Form submits PUT /api/alerts/:id, on success card returns to view mode with updated data
 - **Cancel:** Form collapses, card returns to previous view mode
 
 ### Alert Rule Delete
-- **Trigger:** Click "Delete" from the actions dropdown menu
+- **Trigger:** Click "Delete Rule" from the actions dropdown menu
 - **Response:** Inline confirmation appears below the card or replaces the dropdown
 - **Confirm:** API DELETE /api/alerts/:id fires, card fades out and is removed from list
-- **Cancel:** Confirmation dismissed, no action
+- **Cancel ("Keep Rule"):** Confirmation dismissed, no action
 - **Animation:** Card fade-out 200ms on deletion. Motion-reduce: instant removal.
 
 ### SMTP Test Email
@@ -510,7 +512,7 @@ Options:
 - **Failure:** Inline error message with server error detail appears below button, persists until next action
 
 ### SMTP Save
-- **Trigger:** Click "Save" button in Settings Email Configuration section
+- **Trigger:** Click "Save Email Config" button in Settings Email Configuration section
 - **Response:** Button shows "Saving..." in disabled state. API POST /api/email/config fires
 - **Success:** Inline success message appears below button, auto-clears after 5 seconds
 - **Failure:** Inline error message appears below button
@@ -575,7 +577,7 @@ max-w-lg mx-auto
 
 **Settings Email Configuration:**
 - All fields full-width stacked at all breakpoints (matching existing Settings convention within the `max-w-lg` container)
-- Test Email and Save buttons: inline `flex gap-3` at all sizes
+- Test Email and Save Email Config buttons: inline `flex gap-3` at all sizes
 
 ---
 
@@ -589,8 +591,9 @@ max-w-lg mx-auto
 | Status badge | Visible text label (not icon-only); color + text conveys state |
 | Actions menu | Button has `aria-label="Alert rule actions"`, `aria-haspopup="true"`, `aria-expanded`; menu items are focusable |
 | Builder form | All inputs have associated `<label>` elements; validation errors use `aria-describedby` linking input to error text |
+| Remove operand button | `aria-label="Remove term"` on the "x" icon button |
 | Delete confirmation | `role="alertdialog"` or inline with clear confirm/cancel actions; focus moves to confirm button |
-| SMTP form | Standard form labels + inputs; "Test Email" and "Save" buttons clearly labeled |
+| SMTP form | Standard form labels + inputs; "Test Email" and "Save Email Config" buttons clearly labeled |
 | Empty state CTA | `<button>` element with clear label, keyboard accessible |
 | Nav link | Standard `<Link>` element (inherently accessible) |
 | Color alone not used | Status badges use text labels ("Normal", "Triggered") AND color; history events use text labels AND color |
