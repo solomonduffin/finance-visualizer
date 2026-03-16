@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
-status: completed
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-16T00:01:31.546Z"
-last_activity: 2026-03-15 — Completed Plan 05-03 (Settings Accounts section with inline rename, hide/unhide, drag-and-drop)
+status: in-progress
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-16T02:35:36.806Z"
+last_activity: 2026-03-16 — Completed Plan 06-01 (Backend API endpoints for sync diagnostics and growth)
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 56
+  total_plans: 6
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
-**Current focus:** Milestone v1.1 — Phase 5 (Data Foundation) complete, ready for Phase 6
+**Current focus:** Milestone v1.1 — Phase 6 (Operational Quick Wins) in progress
 
 ## Current Position
 
-Phase: 5 of 9 (Data Foundation) -- COMPLETE
-Plan: 3 of 3 (all complete)
-Status: Phase Complete
-Last activity: 2026-03-15 — Completed Plan 05-03 (Settings Accounts section with inline rename, hide/unhide, drag-and-drop)
+Phase: 6 of 9 (Operational Quick Wins)
+Plan: 1 of 3 (06-01 complete)
+Status: In Progress
+Last activity: 2026-03-16 — Completed Plan 06-01 (Backend API endpoints for sync diagnostics and growth)
 
-Progress: [###########░░░░░░░░░] 56% (14/14 plans complete through Phase 5)
+Progress: [███████░░░] 67% (15/17 plans complete through Phase 6.1)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [###########░░░░░░░░░] 56% (14/14 plans complete thr
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 05 Data Foundation | 3/3 | 32min | 10.7min |
+| 06 Operational Quick Wins | 1/3 | 4min | 4min |
 
 *Updated after each plan completion*
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [v1.0]: Use shopspring/decimal for all financial arithmetic -- applies to growth indicators and projections
 - [v1.1 research]: expr-lang/expr for alert expression evaluation, react-querybuilder for alert rule builder UI
 - [v1.1 research]: go-mail v0.7.1 for SMTP email -- only maintained Go SMTP library with STARTTLS
+- [v1.1]: SanitizeErrorText exported for testability; strips user:pass@host and base64 tokens from sync error text
+- [v1.1]: Growth endpoint returns nil (JSON null) for panels with zero prior total -- avoids division by zero
+- [v1.1]: queryPanelTotals helper reuses panel aggregation logic between current and prior snapshot queries
 
 ### Pending Todos
 
@@ -89,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T00:01:31.544Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-operational-quick-wins/06-CONTEXT.md
+Last session: 2026-03-16T02:35:00.000Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: .planning/phases/06-operational-quick-wins/06-02-PLAN.md
