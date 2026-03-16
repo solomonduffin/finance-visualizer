@@ -265,6 +265,74 @@ function DraggableAccountRow({
   )
 }
 
+// --- Droppable Group (accepts account drops) ---
+
+function DroppableGroup({
+  group,
+  panelType,
+  isMobile,
+  children,
+}: {
+  group: GroupItem
+  panelType: PanelType
+  isMobile: boolean
+  children: React.ReactNode
+}) {
+  const { ref: droppableRef } = useDroppable({ id: `group-${group.id}` })
+  const { ref: draggableRef, isDragging } = useDraggable({
+    id: `drag-group-${group.id}`,
+    data: { panelType, isGroup: true, groupId: group.id },
+    disabled: isMobile,
+  })
+
+  return (
+    <div
+      ref={(node) => { droppableRef(node); draggableRef(node) }}
+      data-testid={`group-${group.id}`}
+      className={`rounded-md border-2 border-dashed border-transparent transition-colors ${isDragging ? 'opacity-30' : ''}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+// --- Draggable Group Member ---
+
+function DraggableGroupMember({
+  member,
+  groupId,
+  isMobile,
+}: {
+  member: { id: string; name: string; original_name: string; balance: string; org_name: string; display_name?: string | null }
+  groupId: number
+  isMobile: boolean
+}) {
+  const { ref, isDragging } = useDraggable({
+    id: member.id,
+    data: { groupId },
+    disabled: isMobile,
+  })
+
+  return (
+    <div
+      ref={ref}
+      className={`flex justify-between items-center text-sm py-1 px-3 ${isDragging ? 'opacity-30' : ''}`}
+    >
+      {!isMobile && (
+        <span className="cursor-grab text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shrink-0 mr-1" title="Drag to move">
+          <GripIcon />
+        </span>
+      )}
+      <span className="text-gray-600 dark:text-gray-300 truncate pr-2 flex-1">
+        {getAccountDisplayName(member)}
+      </span>
+      <span className="text-gray-700 dark:text-gray-300 font-medium shrink-0">
+        {formatCurrency(member.balance)}
+      </span>
+    </div>
+  )
+}
+
 // --- Account Group (droppable) ---
 
 function TrashIcon() {
@@ -338,8 +406,13 @@ function AccountGroup({
             const isExpanded = expandedGroupIds?.has(group.id) ?? false
             const isDeleting = deletingGroupId === group.id
             return (
-              <div key={group.id} data-testid={`group-${group.id}`}>
+              <DroppableGroup key={group.id} group={group} panelType={panelType} isMobile={isMobile}>
                 <div className="flex items-center gap-1 py-1 px-3 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800">
+                  {!isMobile && (
+                    <span className="cursor-grab text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shrink-0" title="Drag to move group">
+                      <GripIcon />
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => onToggleGroup?.(group.id)}
@@ -393,21 +466,11 @@ function AccountGroup({
                 {isExpanded && (
                   <div className="pl-8 space-y-0.5">
                     {group.members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex justify-between items-center text-sm py-1 px-3"
-                      >
-                        <span className="text-gray-600 dark:text-gray-300 truncate pr-2">
-                          {getAccountDisplayName(member)}
-                        </span>
-                        <span className="text-gray-700 dark:text-gray-300 font-medium shrink-0">
-                          {formatCurrency(member.balance)}
-                        </span>
-                      </div>
+                      <DraggableGroupMember key={member.id} member={member} groupId={group.id} isMobile={isMobile} />
                     ))}
                   </div>
                 )}
-              </div>
+              </DroppableGroup>
             )
           })}
         </div>
@@ -713,9 +776,18 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
     const sourceId = String(source.id)
     const sourcePanelType = source.data?.panelType as PanelType | undefined
     const sourceGroupId = source.data?.groupId as number | undefined
+    const isGroupDrag = source.data?.isGroup === true
     const targetId = String(target.id)
 
-    // Drop onto a group droppable (target id starts with "group-")
+    // Dragging a whole group to a different panel
+    if (isGroupDrag && sourceGroupId) {
+      if (PANEL_ORDER.includes(targetId as PanelType) && sourcePanelType !== targetId) {
+        handleGroupPanelChange(sourceGroupId, targetId as PanelType)
+      }
+      return
+    }
+
+    // Drop an account onto a group droppable (target id starts with "group-")
     if (targetId.startsWith('group-')) {
       const targetGroupId = Number(targetId.replace('group-', ''))
       if (sourceGroupId && sourceGroupId !== targetGroupId) {
@@ -733,7 +805,7 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
     const targetPanelType = targetId as PanelType
 
     if (sourceGroupId) {
-      // Remove from group (ungroup)
+      // Remove from group (ungroup) by dropping on panel
       handleRemoveGroupMember(sourceGroupId, sourceId)
       return
     }
