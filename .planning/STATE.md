@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
 status: executing
-stopped_at: Phase 8 context gathered
-last_updated: "2026-03-16T19:11:49.087Z"
-last_activity: 2026-03-16 — Completed Plan 07-02 (Net Worth drill-down page)
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-16T20:46:13.789Z"
+last_activity: 2026-03-16 — Completed Plan 08-01 (Core alert engine)
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
-  percent: 78
+  total_plans: 13
+  completed_plans: 10
+  percent: 77
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
-**Current focus:** Milestone v1.1 — Phase 7 (Analytics Expansion) in progress
+**Current focus:** Milestone v1.1 — Phase 8 (Alert System) in progress
 
 ## Current Position
 
-Phase: 7 of 9 (Analytics Expansion)
-Plan: 2 of 3 (07-02 complete)
+Phase: 8 of 9 (Alert System)
+Plan: 1 of 4 (08-01 complete)
 Status: In Progress
-Last activity: 2026-03-16 — Completed Plan 07-02 (Net Worth drill-down page)
+Last activity: 2026-03-16 — Completed Plan 08-01 (Core alert engine)
 
-Progress: [████████░░] 78% (7/9 plans complete through Phase 7.2)
+Progress: [████████░░] 77% (10/13 plans complete through Phase 8.1)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [████████░░] 78% (7/9 plans complete through Phase
 
 *Updated after each plan completion*
 | Phase 07 P01 | 9min | 2 tasks | 9 files |
+| Phase 08 P01 | 5min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,8 @@ Recent decisions affecting current work:
 - [v1.1]: TimeRangeSelector uses role=radiogroup/radio pattern for accessibility compliance
 - [Phase 07]: fetchGroupResponse helper reused for consistent group response shape
 - [Phase 07]: Panel contribution pattern: standalone accounts use effective_type, grouped accounts use group.panel_type
+- [Phase 08]: float64 for expr-lang Environment values; shopspring/decimal for computation display
+- [Phase 08]: Group totals queried separately from per-account balances in BuildEnvironment
 
 ### Pending Todos
 
@@ -106,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T19:11:49.085Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-alert-system/08-CONTEXT.md
+Last session: 2026-03-16T20:46:12.962Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: None

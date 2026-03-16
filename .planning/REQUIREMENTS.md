@@ -67,10 +67,10 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 
 ### Alerts & Notifications
 
-- [ ] **ALERT-01**: User can create alert rules using an expression builder combining buckets and/or accounts with +/- operators
-- [ ] **ALERT-02**: Alert rules compare computed value against a threshold using <, <=, >, >=, == operators
-- [ ] **ALERT-03**: Alerts fire once on threshold crossing and once on recovery (3-state machine)
-- [ ] **ALERT-04**: Alert email includes rule name, computed value, threshold, and crossing direction with account context
+- [x] **ALERT-01**: User can create alert rules using an expression builder combining buckets and/or accounts with +/- operators
+- [x] **ALERT-02**: Alert rules compare computed value against a threshold using <, <=, >, >=, == operators
+- [x] **ALERT-03**: Alerts fire once on threshold crossing and once on recovery (3-state machine)
+- [x] **ALERT-04**: Alert email includes rule name, computed value, threshold, and crossing direction with account context
 - [ ] **ALERT-05**: User can configure email provider in settings (SMTP or API service with provider-specific fields)
 - [ ] **ALERT-06**: User can send a test email to verify configuration
 - [ ] **ALERT-07**: User can create, edit, enable/disable, and delete alert rules
@@ -164,10 +164,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OPS-01 | Phase 6 | Complete |
 | OPS-02 | Phase 6 | Complete |
 | OPS-03 | Phase 5 | Complete |
-| ALERT-01 | Phase 8 | Pending |
-| ALERT-02 | Phase 8 | Pending |
-| ALERT-03 | Phase 8 | Pending |
-| ALERT-04 | Phase 8 | Pending |
+| ALERT-01 | Phase 8 | Complete |
+| ALERT-02 | Phase 8 | Complete |
+| ALERT-03 | Phase 8 | Complete |
+| ALERT-04 | Phase 8 | Complete |
 | ALERT-05 | Phase 8 | Pending |
 | ALERT-06 | Phase 8 | Pending |
 | ALERT-07 | Phase 8 | Pending |
