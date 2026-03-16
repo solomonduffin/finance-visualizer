@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import {
   PieChart,
   Pie,
@@ -28,6 +29,8 @@ interface Segment {
 }
 
 export function NetWorthDonut({ liquid, savings, investments, isDark }: NetWorthDonutProps) {
+  const navigate = useNavigate()
+
   const rawValues: Record<PanelKey, number> = {
     liquid: parseFloat(liquid),
     savings: parseFloat(savings),
@@ -60,57 +63,64 @@ export function NetWorthDonut({ liquid, savings, investments, isDark }: NetWorth
   })
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-      <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
-        Net Worth
-      </h3>
+    <div
+      className="cursor-pointer group"
+      onClick={() => navigate('/net-worth')}
+      role="link"
+      aria-label="View net worth details"
+    >
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 group-hover:shadow-lg transition-shadow">
+        <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
+          Net Worth
+        </h3>
 
-      {/* Donut chart */}
-      <div className="h-60">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={segments}
-              cx="50%"
-              cy="50%"
-              innerRadius={65}
-              outerRadius={95}
-              paddingAngle={3}
-              dataKey="value"
-              stroke="none"
-            >
-              {segments.map((seg) => (
-                <Cell key={seg.key} fill={seg.color} />
-              ))}
-              <Label value={formattedTotal} position="center" />
-            </Pie>
-            <Tooltip
-              formatter={(v: number) => formatCurrency(v.toFixed(2))}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
+        {/* Donut chart */}
+        <div className="h-60">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={segments}
+                cx="50%"
+                cy="50%"
+                innerRadius={65}
+                outerRadius={95}
+                paddingAngle={3}
+                dataKey="value"
+                stroke="none"
+              >
+                {segments.map((seg) => (
+                  <Cell key={seg.key} fill={seg.color} />
+                ))}
+                <Label value={formattedTotal} position="center" />
+              </Pie>
+              <Tooltip
+                formatter={(v: number) => formatCurrency(v.toFixed(2))}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
 
-      {/* Custom legend */}
-      <div className="mt-4 space-y-2">
-        {PANEL_KEYS.map((key) => {
-          const value = rawValues[key]
-          const color = isDark ? PANEL_COLORS[key].darkAccent : PANEL_COLORS[key].accent
-          return (
-            <div key={key} className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2">
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: color }}
-                />
-                <span className="text-gray-700 dark:text-gray-300">{PANEL_COLORS[key].label}</span>
+        {/* Custom legend */}
+        <div className="mt-4 space-y-2">
+          {PANEL_KEYS.map((key) => {
+            const value = rawValues[key]
+            const color = isDark ? PANEL_COLORS[key].darkAccent : PANEL_COLORS[key].accent
+            return (
+              <div key={key} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="text-gray-700 dark:text-gray-300">{PANEL_COLORS[key].label}</span>
+                </div>
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {formatCurrency(value.toFixed(2))}
+                </span>
               </div>
-              <span className="font-medium text-gray-900 dark:text-gray-100">
-                {formatCurrency(value.toFixed(2))}
-              </span>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

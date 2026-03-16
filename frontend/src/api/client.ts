@@ -240,6 +240,42 @@ export async function getGrowth(): Promise<GrowthResponse> {
   return res.json()
 }
 
+// ---- Net Worth ----
+
+export interface NetWorthPoint {
+  date: string
+  liquid: string
+  savings: string
+  investments: string
+}
+
+export interface NetWorthStatsData {
+  current_net_worth: string
+  period_change_dollars: string
+  period_change_pct: string | null
+  all_time_high: string
+  all_time_high_date: string
+}
+
+export interface NetWorthResponse {
+  points: NetWorthPoint[]
+  stats: NetWorthStatsData | null
+}
+
+/**
+ * GET /api/net-worth?days=N
+ * Returns net worth time-series data with per-panel breakdown and summary statistics.
+ * days=0 returns all data, days>0 returns last N days (default 90).
+ */
+export async function getNetWorth(days?: number): Promise<NetWorthResponse> {
+  const url = days !== undefined && days > 0
+    ? `/api/net-worth?days=${days}`
+    : '/api/net-worth?days=0'
+  const res = await fetch(url, { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch net worth data')
+  return res.json()
+}
+
 // ---- Settings Toggle ----
 
 /**

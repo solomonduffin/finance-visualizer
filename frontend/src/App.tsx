@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import Login from './pages/Login'
 import Settings from './pages/Settings'
 import Dashboard from './pages/Dashboard'
+import NetWorth from './pages/NetWorth'
 import { checkAuth } from './api/client'
 import { useDarkMode } from './hooks/useDarkMode'
 
@@ -74,8 +75,14 @@ function NavBar({ isDark, onToggle }: { isDark: boolean; onToggle: () => void })
             {isDark ? <SunIcon /> : <MoonIcon />}
           </button>
           <Link
+            to="/net-worth"
+            className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"
+          >
+            Net Worth
+          </Link>
+          <Link
             to="/settings"
-            className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"
+            className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"
           >
             Settings
           </Link>
@@ -103,6 +110,7 @@ function AuthenticatedApp() {
             />
           }
         />
+        <Route path="/net-worth" element={<NetWorth />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
