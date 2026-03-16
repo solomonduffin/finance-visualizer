@@ -25,6 +25,8 @@ created: 2026-03-16
 
 **Note:** The project has 14 hand-rolled components with consistent styling conventions. Phase 6 extends 2 existing components (PanelCard, Settings page) and adds 3 new components (GrowthBadge, SyncHistory, DashboardPreferences). shadcn was considered but declined to maintain consistency with the existing v1.0/v1.1 component patterns.
 
+**Focal point:** On the Dashboard, the Display-sized total balance (24px) on each PanelCard is the primary visual anchor; the growth badge is visually subordinate to it. On the Settings page, each card's section heading (18px) anchors its content group.
+
 ---
 
 ## Spacing Scale
@@ -55,19 +57,25 @@ Exceptions: none
 | Role | Size | Weight | Line Height | Tailwind Class |
 |------|------|--------|-------------|----------------|
 | Body | 14px | 400 (normal) | 1.5 | `text-sm` |
-| Label | 12px | 600 (semibold) | 1.5 | `text-xs font-semibold` |
-| Heading | 18px | 500 (medium) | 1.4 | `text-lg font-medium` |
-| Display | 24px | 700 (bold) | 1.2 | `text-2xl font-bold` |
+| Heading | 18px | 600 (semibold) | 1.4 | `text-lg font-semibold` |
+
+**Permitted weights:** 400 (`font-normal`) and 600 (`font-semibold`) only. No other weights may be used in this phase.
+
+**Derived roles (using the 2 declared weights):**
+- Label: 12px at weight 600 -- `text-xs font-semibold`
+- Display: 24px at weight 600 -- `text-2xl font-semibold` (size alone provides hierarchy; weight matches heading)
 
 **Phase-specific typography:**
-- Growth badge percentage: `text-sm font-medium` (14px, weight 500) -- subordinate to the Display-sized total balance
+- Growth badge percentage: `text-sm font-semibold` (14px, weight 600) -- subordinate to the Display-sized total balance
 - Growth badge triangle: same size as percentage text, rendered as Unicode character
 - Sync entry timestamp: `text-sm` (14px, weight 400)
-- Sync entry status text: `text-sm font-medium` (14px, weight 500)
+- Sync entry status text: `text-sm font-semibold` (14px, weight 600)
 - Sync entry account count: `text-sm` (14px, weight 400)
 - Sync error detail (expanded): `text-xs` (12px, weight 400), monospace feel via `font-mono`
-- Dashboard Preferences section heading: `text-lg font-medium` (matches existing Settings card headings)
-- Toggle label: `text-sm font-medium` (14px, weight 500)
+- Dashboard Preferences section heading: `text-lg font-semibold` (matches other Settings card headings)
+- Toggle label: `text-sm font-semibold` (14px, weight 600)
+
+**Migration note:** Existing PanelCard uses `text-2xl font-bold` (weight 700) and Settings headings use `text-lg font-medium` (weight 500). When modifying these components in this phase, update them to `font-semibold` (weight 600) for consistency with this contract.
 
 ---
 
@@ -117,8 +125,8 @@ Accent reserved for: Save button, "Back to Dashboard" link, toggle switch active
 
 | Component | File | Change |
 |-----------|------|--------|
-| PanelCard | `frontend/src/components/PanelCard.tsx` | Add GrowthBadge inline after total balance |
-| Settings | `frontend/src/pages/Settings.tsx` | Add SyncHistory and DashboardPreferences sections |
+| PanelCard | `frontend/src/components/PanelCard.tsx` | Add GrowthBadge inline after total balance; update `font-bold` to `font-semibold` |
+| Settings | `frontend/src/pages/Settings.tsx` | Add SyncHistory and DashboardPreferences sections; update heading `font-medium` to `font-semibold` |
 | Dashboard | `frontend/src/pages/Dashboard.tsx` | Fetch growth data, pass to PanelCard; fetch toggle state |
 
 ### GrowthBadge Specification
@@ -127,7 +135,7 @@ Accent reserved for: Save button, "Back to Dashboard" link, toggle switch active
 
 ```
 $12,450.00  [triangle_up] +2.3%
-^Display    ^8px gap  ^text-sm font-medium
+^Display    ^8px gap  ^text-sm font-semibold
 ```
 
 **States:**
@@ -138,13 +146,13 @@ $12,450.00  [triangle_up] +2.3%
 
 **Tooltip:** Native `title` attribute. Format: `+$280.00 over 30 days` or `-$150.00 over 30 days`. Dollar sign, comma-separated thousands, 2 decimal places. Sign prefix always present.
 
-**Invisible placeholder structure:** `<span class="invisible text-sm font-medium ml-2">[triangle_up] +0.0%</span>` -- reserves exact same horizontal and vertical space as a visible badge.
+**Invisible placeholder structure:** `<span class="invisible text-sm font-semibold ml-2">[triangle_up] +0.0%</span>` -- reserves exact same horizontal and vertical space as a visible badge.
 
 ### SyncHistory Specification
 
 **Layout:** Placed below the Accounts section on Settings page, inside a card with the same styling as other Settings cards (`bg-white dark:bg-gray-900 rounded-xl shadow-md p-6`).
 
-**Section heading:** "Sync History" -- `text-lg font-medium` matching other card headings.
+**Section heading:** "Sync History" -- `text-lg font-semibold` matching other card headings.
 
 **Entry layout per sync:**
 ```
@@ -171,7 +179,7 @@ $12,450.00  [triangle_up] +2.3%
 
 **Layout:** Placed below the Sync History section on Settings page, inside a card with the same styling as other Settings cards.
 
-**Section heading:** "Dashboard Preferences" -- `text-lg font-medium`.
+**Section heading:** "Dashboard Preferences" -- `text-lg font-semibold`.
 
 **Toggle row:**
 ```
@@ -179,7 +187,7 @@ Show growth badges     [toggle switch]
 ```
 
 **Toggle implementation:**
-- Label: "Show growth badges" -- `text-sm font-medium text-gray-700 dark:text-gray-300`
+- Label: "Show growth badges" -- `text-sm font-semibold text-gray-700 dark:text-gray-300`
 - Switch: Custom CSS toggle (no library). 40px wide, 22px tall, rounded-full. Background `bg-gray-300 dark:bg-gray-600` when OFF, `bg-blue-600 dark:bg-blue-500` when ON. White circle knob (18px, 2px inset). Transition 150ms ease.
 - Flex row: `flex items-center justify-between`
 
@@ -259,7 +267,7 @@ Show growth badges     [toggle switch]
 
 **After:**
 ```
-<p class="text-2xl font-bold ... flex items-baseline gap-2">
+<p class="text-2xl font-semibold ... flex items-baseline gap-2">
   <span>$12,450.00</span>
   <GrowthBadge ... />
 </p>
