@@ -204,10 +204,11 @@ func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) err
 		return fmt.Errorf("upsert account %q: %w", acct.ID, err)
 	}
 
-	// Insert snapshot (silently ignored on duplicate account_id + balance_date).
+	// Upsert snapshot — update balance if a snapshot for this date already exists.
 	_, err = db.ExecContext(ctx, `
-		INSERT OR IGNORE INTO balance_snapshots(account_id, balance, balance_date)
+		INSERT INTO balance_snapshots(account_id, balance, balance_date)
 		VALUES(?, ?, ?)
+		ON CONFLICT(account_id, balance_date) DO UPDATE SET balance=excluded.balance
 	`, acct.ID, acct.Balance, balanceDate)
 	if err != nil {
 		return fmt.Errorf("insert snapshot for %q: %w", acct.ID, err)

@@ -262,6 +262,65 @@ func TestInsertSnapshot_Duplicate(t *testing.T) {
 	}
 }
 
+func TestSyncOnce_UpdatesSameDayBalance(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// First sync: balance is 500.00
+	accounts1 := []map[string]any{
+		{
+			"id":           "acct-update",
+			"name":         "Checking",
+			"currency":     "USD",
+			"balance":      "500.00",
+			"balance-date": 1700000000,
+			"org":          map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	srv1 := newMockServer(t, accounts1)
+	setAccessURL(t, database, srv1.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("first SyncOnce error: %v", err)
+	}
+
+	// Second sync: same date, updated balance 750.00
+	accounts2 := []map[string]any{
+		{
+			"id":           "acct-update",
+			"name":         "Checking",
+			"currency":     "USD",
+			"balance":      "750.00",
+			"balance-date": 1700000000,
+			"org":          map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+	srv2 := newMockServer(t, accounts2)
+	setAccessURL(t, database, srv2.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+		t.Fatalf("second SyncOnce error: %v", err)
+	}
+
+	// Balance should be updated to 750.00
+	var balance string
+	if err := database.QueryRow(`SELECT balance FROM balance_snapshots WHERE account_id='acct-update'`).Scan(&balance); err != nil {
+		t.Fatalf("query balance: %v", err)
+	}
+	if balance != "750.00" {
+		t.Errorf("expected balance 750.00 after same-day update, got %s", balance)
+	}
+
+	// Still only 1 snapshot row
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM balance_snapshots WHERE account_id='acct-update'`).Scan(&count); err != nil {
+		t.Fatalf("query count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 snapshot, got %d", count)
+	}
+}
+
 func TestUpsertAccount(t *testing.T) {
 	database := openTestDB(t)
 	ctx := context.Background()
