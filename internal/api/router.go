@@ -58,7 +58,13 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
 		r.Get("/api/balance-history", handlers.GetBalanceHistory(database))
 		r.Get("/api/sync-log", handlers.GetSyncLog(database))
 		r.Get("/api/growth", handlers.GetGrowth(database))
+		r.Get("/api/net-worth", handlers.GetNetWorth(database))
 		r.Put("/api/settings/growth-badge", handlers.SaveGrowthBadge(database))
+		r.Post("/api/groups", handlers.CreateGroup(database))
+		r.Patch("/api/groups/{id}", handlers.UpdateGroup(database))
+		r.Delete("/api/groups/{id}", handlers.DeleteGroup(database))
+		r.Post("/api/groups/{id}/members", handlers.AddGroupMember(database))
+		r.Delete("/api/groups/{id}/members/{accountId}", handlers.RemoveGroupMember(database))
 	})
 
 	return r
