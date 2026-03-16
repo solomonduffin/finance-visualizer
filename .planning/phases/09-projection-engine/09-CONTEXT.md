@@ -39,8 +39,10 @@ Forward-looking net worth projection page with per-account (and per-holding for 
 - Separate collapsible "Income Modeling" section below the account rate table
 - Toggle to enable/disable income modeling — when off, projection uses growth rates only
 - Inputs: annual income and monthly savings percentage
-- Allocation via percentage sliders/inputs per account — must sum to 100%
-- Allocation only shows accounts that are checked "include" in the rate table — excluded accounts don't receive income
+- Allocation via percentage sliders/inputs — must sum to 100%
+- For investment accounts WITH holdings: allocation targets individual holdings (e.g., 40% to VTSAX, 10% to bonds), not the account as a whole
+- For accounts WITHOUT holdings: allocation targets the account level
+- Allocation only shows accounts/holdings that are checked "include" in the rate table — excluded accounts don't receive income
 - Chart updates live as income parameters change (same debounce as rate changes)
 
 ### Holdings Display
@@ -113,7 +115,7 @@ No external specs — requirements are fully captured in REQUIREMENTS.md (PROJ-0
 <specifics>
 ## Specific Ideas
 
-- Per-holding growth rates are critical for investment accounts — a Vanguard account might hold VTSAX at 10% and bonds at 4%, so per-holding rates give accurate projections
+- Per-holding growth rates AND income allocation are critical for investment accounts — a Vanguard account might hold VTSAX at 10% and bonds at 4%, and savings allocation should target holdings individually too (e.g., 40% to VTSAX, 10% to bonds)
 - The page should feel exploratory — adjust a rate, see the line move. Interactive "what-if" tool.
 - Income modeling is optional (toggled) so users who just want growth rate projections aren't overwhelmed
 
