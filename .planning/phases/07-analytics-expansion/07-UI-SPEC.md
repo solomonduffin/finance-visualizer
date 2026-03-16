@@ -49,10 +49,11 @@ Exceptions: none
 
 **Phase-specific spacing rules:**
 - Group member indent: `pl-6` (24px) left padding for member accounts nested under a group row
-- Segmented control button padding: `px-3 py-1.5` (12px horizontal, 6px vertical) for touch-friendly targets
+- Segmented control button padding: `px-3 py-2` (12px horizontal, 8px vertical) for touch-friendly targets
 - Stats bar: `gap-8` (32px) between stat items on desktop; stacks vertically on mobile with `gap-4` (16px)
 - Stacked area chart container: `h-[400px]` on desktop, `h-[280px]` on mobile
-- Nav link gap: `gap-3` (12px) between nav items, consistent with existing NavBar
+- Stacked area chart margins: `margin={{ top: 8, right: 8, left: 8, bottom: 0 }}` (all multiples of 4)
+- Nav link gap: `gap-3` (12px) between nav items -- pre-existing value from NavBar, not introduced by this phase
 
 ---
 
@@ -60,12 +61,16 @@ Exceptions: none
 
 | Role | Size | Weight | Line Height | Tailwind Class |
 |------|------|--------|-------------|----------------|
+| Label/Axis | 12px | 600 (semibold) | 1.5 | `text-xs font-semibold` |
 | Body | 14px | 400 (normal) | 1.5 | `text-sm` |
-| Heading | 18px | 600 (semibold) | 1.4 | `text-lg font-semibold` |
+| Heading/Display | 24px | 600 (semibold) | 1.2 | `text-2xl font-semibold` |
+| Stat Value | 32px | 600 (semibold) | 1.2 | `text-3xl font-semibold` |
+
+**Permitted sizes:** 12px, 14px, 24px, 32px only. No other sizes may be used in this phase.
 
 **Permitted weights:** 400 (`font-normal`) and 600 (`font-semibold`) only. No other weights may be used in this phase.
 
-**Derived roles (using the 2 declared weights):**
+**Derived roles (using the 4 declared sizes and 2 declared weights):**
 - Label: 12px at weight 600 -- `text-xs font-semibold` (panel card type labels, chart axis labels)
 - Display: 24px at weight 600 -- `text-2xl font-semibold` (panel card total balance)
 - Page Title: 24px at weight 600 -- `text-2xl font-semibold` (page heading, e.g., "Net Worth")
@@ -75,15 +80,15 @@ Exceptions: none
 **Phase-specific typography:**
 - Group row name: `text-sm font-semibold` (14px, weight 600) -- distinguishes group from individual accounts
 - Group member name: `text-sm font-normal` (14px, weight 400) -- same as existing individual account names
-- Group summed balance: `text-sm font-medium` -- wait, use `font-semibold` for consistency: `text-sm font-semibold`
+- Group summed balance: `text-sm font-semibold` (14px, weight 600) -- consistent with group name emphasis
 - Net worth stat value (current): `text-3xl font-semibold` (32px) -- primary focal point of the page
-- Net worth stat value (period change, ATH): `text-lg font-semibold` (18px) -- secondary stats
+- Net worth stat value (period change, ATH): `text-2xl font-semibold` (24px) -- secondary stats, promoted from 18px to 24px to stay within the 4-size scale
 - Net worth stat label: `text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400`
 - Segmented control label: `text-sm font-semibold` (14px, weight 600) for active; `text-sm font-normal` for inactive
 - Chart tooltip date: `text-sm font-semibold` (14px, weight 600)
 - Chart tooltip values: `text-sm font-normal` (14px, weight 400)
-- Chart axis ticks: 11px (Recharts tick prop, matching BalanceLineChart)
-- Nav link "Net Worth": `text-sm font-medium` -- matches existing "Settings" nav link style
+- Chart axis ticks: `tick={{ fontSize: 12 }}` (Recharts tick prop, 12px matching the label/axis scale tier)
+- Nav link "Net Worth": `text-sm font-semibold` (14px, weight 600) -- replaces `font-medium` to stay within the 2-weight budget
 
 ---
 
@@ -177,9 +182,9 @@ Expanded:   [v] Coinbase          $5,230.00  +3.2%
 **Member rows (expanded):**
 ```
 <div class="pl-6">
-  <div class="flex justify-between items-center text-sm py-0.5">
+  <div class="flex justify-between items-center text-sm py-1">
     <span class="text-gray-600 dark:text-gray-300 truncate pr-2">CB Wallet 1</span>
-    <span class="text-gray-800 dark:text-gray-200 font-medium shrink-0">$3,000.00</span>
+    <span class="text-gray-800 dark:text-gray-200 font-semibold shrink-0">$3,000.00</span>
   </div>
 </div>
 ```
@@ -257,10 +262,10 @@ $51,330                 +$3,200 (+6.7%)        $52,100
 - Dollar change and percentage on same line: `+$3,200 (+6.7%)`
 - Positive: `text-green-600 dark:text-green-400`
 - Negative: `text-red-600 dark:text-red-400`
-- Value size: `text-lg font-semibold` (18px) -- secondary to current net worth
+- Value size: `text-2xl font-semibold` (24px) -- secondary to current net worth, using heading/display tier
 
 **All-time high stat specifics:**
-- Value: `text-lg font-semibold` (18px)
+- Value: `text-2xl font-semibold` (24px)
 - Date beneath value: `text-xs text-gray-500 dark:text-gray-400`
 
 **Responsive:**
@@ -291,7 +296,7 @@ $51,330                 +$3,200 (+6.7%)        $52,100
 <button
   role="radio"
   aria-checked={isActive}
-  class="px-3 py-1.5 text-sm rounded-md transition-colors {active/inactive styles}"
+  class="px-3 py-2 text-sm rounded-md transition-colors {active/inactive styles}"
 >
   30d
 </button>
@@ -321,6 +326,8 @@ $51,330                 +$3,200 (+6.7%)        $52,100
 
 All three share `stackId="networth"`.
 
+**Chart margins:** `margin={{ top: 8, right: 8, left: 8, bottom: 0 }}`
+
 **Gradient definitions (per layer):**
 ```
 <linearGradient id="gradLiquid" x1="0" y1="0" x2="0" y2="1">
@@ -330,8 +337,8 @@ All three share `stackId="networth"`.
 ```
 
 **Axes:**
-- XAxis: `dataKey="date"`, `tick={{ fontSize: 11 }}`, stroke `gray-500`/`gray-400` (dark)
-- YAxis: `tick={{ fontSize: 11 }}`, `tickFormatter` showing `$Xk` for thousands, stroke matches XAxis
+- XAxis: `dataKey="date"`, `tick={{ fontSize: 12 }}`, stroke `gray-500`/`gray-400` (dark)
+- YAxis: `tick={{ fontSize: 12 }}`, `tickFormatter` showing `$Xk` for thousands, stroke matches XAxis
 - CartesianGrid: `strokeDasharray="3 3"`, `strokeOpacity={0.2}`
 
 **Custom tooltip (NetWorthTooltip):**
@@ -339,7 +346,7 @@ All three share `stackId="networth"`.
 Container: bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-md p-3 text-sm
 Layout:
   [Date -- font-semibold text-gray-700 dark:text-gray-200 mb-2]
-  [Total: $51,330 -- font-bold text-base text-gray-900 dark:text-gray-100 mb-1]
+  [Total: $51,330 -- font-semibold text-base text-gray-900 dark:text-gray-100 mb-1]
   [color dot] Liquid    $4,230
   [color dot] Savings   $15,000
   [color dot] Investments $32,100
@@ -382,7 +389,9 @@ Each panel line uses a 10px color dot (matching panelColors) + panel label + for
 **Current nav order:** [dark mode toggle] [Settings]
 **New nav order:** [dark mode toggle] [Net Worth] [Settings]
 
-**Link style:** Matches existing "Settings" link: `text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors`
+**Link style:** Matches existing "Settings" link pattern: `text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors`
+
+**Note:** The existing "Settings" link uses `font-medium` (weight 500). This phase introduces the "Net Worth" link with `font-semibold` (weight 600) per the 2-weight budget. If the executor observes a visual mismatch, the existing "Settings" link's `font-medium` should also be updated to `font-semibold` as a consistency fix within this phase's NavBar modification scope.
 
 ---
 
@@ -441,7 +450,7 @@ Each panel line uses a 10px color dot (matching panelColors) + panel label + for
 | Group member count | ({N} accounts) |
 | Delete group confirmation | Delete "{name}"? Member accounts will be ungrouped, not deleted. |
 | Delete group confirm button | Delete Group |
-| Delete group cancel button | Cancel |
+| Delete group cancel button | Keep Group |
 | Net Worth page title | Net Worth |
 | Stat label: current NW | Current Net Worth |
 | Stat label: period change (30d) | 30-Day Change |
