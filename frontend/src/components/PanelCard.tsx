@@ -1,6 +1,7 @@
 import { PANEL_COLORS } from './panelColors'
 import { formatCurrency } from '../utils/format'
 import { getAccountDisplayName } from '../utils/account'
+import { GrowthBadge } from './GrowthBadge'
 
 interface Account {
   id: string
@@ -14,9 +15,12 @@ interface PanelCardProps {
   panelKey: 'liquid' | 'savings' | 'investments'
   total: string
   accounts: Account[]
+  pctChange?: string | null
+  dollarChange?: string | null
+  growthVisible?: boolean
 }
 
-export function PanelCard({ panelKey, total, accounts }: PanelCardProps) {
+export function PanelCard({ panelKey, total, accounts, pctChange, dollarChange, growthVisible }: PanelCardProps) {
   const colors = PANEL_COLORS[panelKey]
 
   return (
@@ -34,8 +38,13 @@ export function PanelCard({ panelKey, total, accounts }: PanelCardProps) {
       </p>
 
       {/* Total balance */}
-      <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-        {formatCurrency(total)}
+      <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100 flex items-baseline gap-2">
+        <span>{formatCurrency(total)}</span>
+        <GrowthBadge
+          pctChange={pctChange ?? null}
+          dollarChange={dollarChange ?? null}
+          visible={growthVisible ?? false}
+        />
       </p>
 
       {/* Account list */}

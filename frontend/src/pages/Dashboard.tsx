@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getSummary, getAccounts, getBalanceHistory } from '../api/client'
-import type { SummaryResponse, AccountsResponse, BalanceHistoryResponse } from '../api/client'
+import { getSummary, getAccounts, getBalanceHistory, getGrowth } from '../api/client'
+import type { SummaryResponse, AccountsResponse, BalanceHistoryResponse, GrowthResponse } from '../api/client'
 import { SkeletonDashboard } from '../components/SkeletonDashboard'
 import { EmptyState } from '../components/EmptyState'
 import { PanelCard } from '../components/PanelCard'
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [accounts, setAccounts] = useState<AccountsResponse | null>(null)
   const [history, setHistory] = useState<BalanceHistoryResponse | null>(null)
+  const [growth, setGrowth] = useState<GrowthResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -24,14 +25,16 @@ export default function Dashboard() {
     setError(false)
     setLoading(true)
     try {
-      const [summaryData, accountsData, historyData] = await Promise.all([
+      const [summaryData, accountsData, historyData, growthData] = await Promise.all([
         getSummary(),
         getAccounts(),
         getBalanceHistory(30),
+        getGrowth(),
       ])
       setSummary(summaryData)
       setAccounts(accountsData)
       setHistory(historyData)
+      setGrowth(growthData)
     } catch {
       setError(true)
     } finally {
@@ -110,6 +113,9 @@ export default function Dashboard() {
               panelKey={key}
               total={summary[key]}
               accounts={accounts![key]}
+              pctChange={growth?.[key]?.pct_change}
+              dollarChange={growth?.[key]?.dollar_change}
+              growthVisible={growth?.growth_badge_enabled ?? false}
             />
           ))}
         </div>
