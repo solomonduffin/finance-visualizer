@@ -14,6 +14,7 @@ vi.mock('../components/AccountsSection', () => ({
 const mockGetSettings = vi.mocked(client.getSettings)
 const mockSaveSettings = vi.mocked(client.saveSettings)
 const mockTriggerSync = vi.mocked(client.triggerSync)
+const mockGetEmailConfig = vi.mocked(client.getEmailConfig)
 
 const notConfiguredResponse: client.SettingsResponse = {
   configured: false,
@@ -30,6 +31,8 @@ const configuredResponse: client.SettingsResponse = {
 describe('Settings', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    // Default email config mock (not configured)
+    mockGetEmailConfig.mockResolvedValue({ configured: false })
     // Default matchMedia mock
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -51,8 +54,8 @@ describe('Settings', () => {
       mockGetSettings.mockResolvedValue(notConfiguredResponse)
       render(<Settings onNavigateDashboard={() => {}} />)
 
-      expect(screen.getByRole('textbox')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Paste setup token or access URL')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument()
     })
   })
 
@@ -92,10 +95,10 @@ describe('Settings', () => {
       render(<Settings onNavigateDashboard={() => {}} />)
       await waitFor(() => screen.getByText(/not configured/i))
 
-      const input = screen.getByRole('textbox')
+      const input = screen.getByPlaceholderText('Paste setup token or access URL')
       await userEvent.type(input, 'https://bridge.simplefin.org/simplefin/b64token')
 
-      const saveButton = screen.getByRole('button', { name: /save/i })
+      const saveButton = screen.getByRole('button', { name: /^save$/i })
       await userEvent.click(saveButton)
 
       await waitFor(() =>
@@ -112,7 +115,7 @@ describe('Settings', () => {
       mockGetSettings.mockResolvedValue(notConfiguredResponse)
       render(<Settings onNavigateDashboard={() => {}} />)
 
-      const saveButton = screen.getByRole('button', { name: /save/i })
+      const saveButton = screen.getByRole('button', { name: /^save$/i })
       expect(saveButton).toBeDisabled()
     })
   })
@@ -162,6 +165,26 @@ describe('Settings', () => {
 
       await waitFor(() => screen.getByText(/not configured/i))
       expect(screen.queryByTestId('accounts-section')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('TestSettings_EmailConfiguration', () => {
+    it('renders Email Configuration section', async () => {
+      mockGetSettings.mockResolvedValue(notConfiguredResponse)
+      render(<Settings onNavigateDashboard={() => {}} />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Email Configuration')).toBeInTheDocument()
+      })
+    })
+
+    it('shows SMTP Host input', async () => {
+      mockGetSettings.mockResolvedValue(notConfiguredResponse)
+      render(<Settings onNavigateDashboard={() => {}} />)
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('smtp.example.com')).toBeInTheDocument()
+      })
     })
   })
 

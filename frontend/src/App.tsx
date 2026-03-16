@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Settings from './pages/Settings'
 import Dashboard from './pages/Dashboard'
 import NetWorth from './pages/NetWorth'
+import Alerts from './pages/Alerts'
 import { checkAuth } from './api/client'
 import { useDarkMode } from './hooks/useDarkMode'
 
@@ -81,6 +82,12 @@ function NavBar({ isDark, onToggle }: { isDark: boolean; onToggle: () => void })
             Net Worth
           </Link>
           <Link
+            to="/alerts"
+            className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"
+          >
+            Alerts
+          </Link>
+          <Link
             to="/settings"
             className="text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"
           >
@@ -111,6 +118,7 @@ function AuthenticatedApp() {
           }
         />
         <Route path="/net-worth" element={<NetWorth />} />
+        <Route path="/alerts" element={<Alerts />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

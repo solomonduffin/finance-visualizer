@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react'
-import { getSettings, saveSettings, triggerSync, saveGrowthBadgeSetting, type SettingsResponse } from '../api/client'
+import { getSettings, saveSettings, triggerSync, saveGrowthBadgeSetting, getEmailConfig, saveEmailConfig, sendTestEmail, type SettingsResponse } from '../api/client'
 import { timeAgo } from '../utils/time'
 import AccountsSection from '../components/AccountsSection'
 import SyncHistory from '../components/SyncHistory'
@@ -19,6 +19,13 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [toasts, setToasts] = useState<string[]>([])
   const [growthBadgeEnabled, setGrowthBadgeEnabled] = useState<boolean>(true)
+  const [emailConfig, setEmailConfig] = useState({
+    host: '', port: '587', username: '', password: '', from: '', to: ''
+  })
+  const [emailConfigured, setEmailConfigured] = useState(false)
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailTesting, setEmailTesting] = useState(false)
+  const [emailFeedback, setEmailFeedback] = useState<{type: 'success' | 'error', message: string} | null>(null)
 
   async function loadSettings() {
     try {
@@ -32,7 +39,58 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
 
   useEffect(() => {
     loadSettings()
+    loadEmailConfig()
   }, [])
+
+  async function loadEmailConfig() {
+    try {
+      const cfg = await getEmailConfig()
+      if (cfg.configured) {
+        setEmailConfigured(true)
+        setEmailConfig(prev => ({
+          ...prev,
+          host: cfg.host ?? '',
+          port: cfg.port ?? '587',
+          username: cfg.username ?? '',
+          from: cfg.from ?? '',
+          to: cfg.to ?? '',
+          password: '', // API never returns password
+        }))
+      }
+    } catch {
+      // Silently fail -- email config is optional
+    }
+  }
+
+  async function handleTestEmail() {
+    setEmailTesting(true)
+    setEmailFeedback(null)
+    try {
+      await sendTestEmail(emailConfig)
+      setEmailFeedback({ type: 'success', message: 'Test email sent successfully' })
+      setTimeout(() => setEmailFeedback(null), 5000)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to send test email'
+      setEmailFeedback({ type: 'error', message })
+    } finally {
+      setEmailTesting(false)
+    }
+  }
+
+  async function handleSaveEmailConfig() {
+    setEmailSaving(true)
+    setEmailFeedback(null)
+    try {
+      await saveEmailConfig(emailConfig)
+      setEmailFeedback({ type: 'success', message: 'Email configuration saved' })
+      setEmailConfigured(true)
+      setTimeout(() => setEmailFeedback(null), 5000)
+    } catch {
+      setEmailFeedback({ type: 'error', message: 'Failed to save email configuration' })
+    } finally {
+      setEmailSaving(false)
+    }
+  }
 
   async function handleSave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -226,6 +284,106 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
             <SyncHistory />
           </div>
         )}
+
+        {/* Email Configuration */}
+        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Email Configuration</h2>
+          <div className="space-y-4">
+            {/* SMTP Host */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">SMTP Host</label>
+              <input
+                type="text"
+                value={emailConfig.host}
+                onChange={e => setEmailConfig(prev => ({...prev, host: e.target.value}))}
+                placeholder="smtp.example.com"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {/* Port */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Port</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={emailConfig.port}
+                onChange={e => setEmailConfig(prev => ({...prev, port: e.target.value}))}
+                placeholder="587"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {/* Username */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Username</label>
+              <input
+                type="text"
+                value={emailConfig.username}
+                onChange={e => setEmailConfig(prev => ({...prev, username: e.target.value}))}
+                placeholder="user@example.com"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Password</label>
+              <input
+                type="password"
+                value={emailConfig.password}
+                onChange={e => setEmailConfig(prev => ({...prev, password: e.target.value}))}
+                placeholder={emailConfigured ? '********' : ''}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Encrypted at rest. Re-enter to change.</p>
+            </div>
+            {/* From Address */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">From Address</label>
+              <input
+                type="email"
+                value={emailConfig.from}
+                onChange={e => setEmailConfig(prev => ({...prev, from: e.target.value}))}
+                placeholder="alerts@example.com"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            {/* To Address */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">To Address</label>
+              <input
+                type="email"
+                value={emailConfig.to}
+                onChange={e => setEmailConfig(prev => ({...prev, to: e.target.value}))}
+                placeholder="you@example.com"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={handleTestEmail}
+              disabled={emailTesting || !emailConfig.host}
+              className="py-2 px-4 rounded-lg text-sm font-semibold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {emailTesting ? 'Sending...' : 'Test Email'}
+            </button>
+            <button
+              onClick={handleSaveEmailConfig}
+              disabled={emailSaving || !emailConfig.host}
+              className="bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {emailSaving ? 'Saving...' : 'Save Email Config'}
+            </button>
+          </div>
+
+          {/* Inline feedback */}
+          {emailFeedback && (
+            <p className={`text-sm mt-2 ${emailFeedback.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {emailFeedback.message}
+            </p>
+          )}
+        </div>
 
         {/* Dashboard Preferences */}
         <div className="mb-6">
