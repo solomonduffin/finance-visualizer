@@ -321,6 +321,53 @@ func TestGetSummary_TypeOverride(t *testing.T) {
 	}
 }
 
+func TestGetSummary_GroupedAccountUsesGroupPanelType(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	// Investment account that will be in a savings group
+	seedAccounts(t, database, []map[string]string{
+		{"id": "inv1", "name": "Roth IRA", "account_type": "investment", "currency": "USD", "org_name": ""},
+		{"id": "sav1", "name": "HYSA", "account_type": "savings", "currency": "USD", "org_name": ""},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "inv1", "balance": "5000.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav1", "balance": "2000.00", "balance_date": "2024-01-01"},
+	})
+
+	// Create a group with panel_type=savings and add inv1 to it
+	_, err := database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('Retirement', 'savings')`)
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	_, err = database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'inv1')`)
+	if err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/summary", nil)
+	w := httptest.NewRecorder()
+	handlers.GetSummary(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("parse response: %v", err)
+	}
+
+	// inv1 is type=investment but in a savings group, so should count under savings
+	// savings = 2000 (sav1) + 5000 (inv1 via group) = 7000
+	if string(resp["savings"]) != `"7000.00"` {
+		t.Errorf("savings: got %s, want \"7000.00\"", resp["savings"])
+	}
+	// investments should be 0 since inv1 is in a savings group
+	if string(resp["investments"]) != `"0.00"` {
+		t.Errorf("investments: got %s, want \"0.00\"", resp["investments"])
+	}
+}
+
 func TestGetSummary_BalancesAreStrings(t *testing.T) {
 	database := setupFinanceTestDB(t)
 

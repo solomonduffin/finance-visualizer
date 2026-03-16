@@ -57,14 +57,17 @@ func GetNetWorth(database *sql.DB) http.HandlerFunc {
 		}
 
 		// Build SQL query.
+		// For grouped accounts, use the group's panel_type for panel assignment.
 		query := `
 			SELECT DATE(bs.balance_date) AS bd,
-			       COALESCE(a.account_type_override, a.account_type) AS effective_type,
+			       COALESCE(ag.panel_type, a.account_type_override, a.account_type) AS effective_type,
 			       bs.balance
 			FROM balance_snapshots bs
 			JOIN accounts a ON a.id = bs.account_id
+			LEFT JOIN group_members gm ON gm.account_id = a.id
+			LEFT JOIN account_groups ag ON ag.id = gm.group_id
 			WHERE a.hidden_at IS NULL
-			  AND COALESCE(a.account_type_override, a.account_type) IN ('checking', 'credit', 'savings', 'investment')`
+			  AND COALESCE(ag.panel_type, a.account_type_override, a.account_type) IN ('checking', 'credit', 'savings', 'investment')`
 
 		if days > 0 {
 			query += fmt.Sprintf(" AND DATE(bs.balance_date) >= DATE('now', '-%d days')", days)

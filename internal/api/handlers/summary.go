@@ -25,13 +25,16 @@ type summaryResponse struct {
 // COALESCE(account_type_override, account_type) is used for effective type grouping.
 func GetSummary(database *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Query all visible accounts with their latest snapshot balance using a correlated subquery.
-		// Uses effective type (COALESCE of override and inferred type) for grouping.
+		// Query all visible accounts with their latest snapshot balance.
+		// For grouped accounts, use the group's panel_type for panel assignment.
+		// For standalone accounts, use effective type (COALESCE of override and inferred type).
 		rows, err := database.QueryContext(r.Context(), `
-			SELECT COALESCE(a.account_type_override, a.account_type) AS effective_type,
+			SELECT COALESCE(ag.panel_type, a.account_type_override, a.account_type) AS effective_type,
 			       bs.balance
 			FROM accounts a
 			JOIN balance_snapshots bs ON bs.account_id = a.id
+			LEFT JOIN group_members gm ON gm.account_id = a.id
+			LEFT JOIN account_groups ag ON ag.id = gm.group_id
 			WHERE a.hidden_at IS NULL
 			  AND bs.balance_date = (
 				SELECT MAX(bs2.balance_date)
