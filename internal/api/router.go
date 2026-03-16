@@ -57,6 +57,8 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
 		r.Patch("/api/accounts/{id}", handlers.UpdateAccount(database))
 		r.Get("/api/balance-history", handlers.GetBalanceHistory(database))
 		r.Get("/api/sync-log", handlers.GetSyncLog(database))
+		r.Get("/api/growth", handlers.GetGrowth(database))
+		r.Put("/api/settings/growth-badge", handlers.SaveGrowthBadge(database))
 	})
 
 	return r

@@ -15,9 +15,10 @@ type saveSettingsRequest struct {
 }
 
 type settingsResponse struct {
-	Configured     bool    `json:"configured"`
-	LastSyncAt     *string `json:"last_sync_at"`
-	LastSyncStatus *string `json:"last_sync_status"`
+	Configured         bool    `json:"configured"`
+	LastSyncAt         *string `json:"last_sync_at"`
+	LastSyncStatus     *string `json:"last_sync_status"`
+	GrowthBadgeEnabled bool    `json:"growth_badge_enabled"`
 }
 
 // GetSettings returns an http.HandlerFunc that handles GET /api/settings.
@@ -56,6 +57,17 @@ func GetSettings(database *sql.DB) http.HandlerFunc {
 				s := "success"
 				resp.LastSyncStatus = &s
 			}
+		}
+
+		// Query growth_badge_enabled setting (defaults to true when absent).
+		var growthEnabled string
+		err = database.QueryRowContext(r.Context(),
+			`SELECT value FROM settings WHERE key='growth_badge_enabled'`,
+		).Scan(&growthEnabled)
+		if err == sql.ErrNoRows {
+			resp.GrowthBadgeEnabled = true
+		} else if err == nil {
+			resp.GrowthBadgeEnabled = growthEnabled != "false"
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -146,5 +158,44 @@ func SyncNow(database *sql.DB) http.HandlerFunc {
 			OK:       true,
 			Restored: restored,
 		}) //nolint:errcheck
+	}
+}
+
+type growthBadgeRequest struct {
+	Value string `json:"value"`
+}
+
+// SaveGrowthBadge returns an http.HandlerFunc that handles PUT /api/settings/growth-badge.
+// It persists the growth badge toggle value ("true" or "false") in the settings table.
+func SaveGrowthBadge(database *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Body == nil {
+			http.Error(w, `{"error":"request body required"}`, http.StatusBadRequest)
+			return
+		}
+
+		var req growthBadgeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+			return
+		}
+
+		if req.Value != "true" && req.Value != "false" {
+			http.Error(w, `{"error":"value must be \"true\" or \"false\""}`, http.StatusBadRequest)
+			return
+		}
+
+		_, err := database.ExecContext(r.Context(),
+			`INSERT INTO settings (key, value) VALUES ('growth_badge_enabled', ?)
+			 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+			req.Value,
+		)
+		if err != nil {
+			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`)) //nolint:errcheck
 	}
 }

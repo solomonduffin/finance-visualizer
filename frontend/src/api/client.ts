@@ -57,6 +57,7 @@ export interface SettingsResponse {
   configured: boolean
   last_sync_at: string | null
   last_sync_status: string | null
+  growth_badge_enabled: boolean
 }
 
 /**
@@ -186,5 +187,72 @@ export async function getAccounts(includeHidden = false): Promise<AccountsRespon
 export async function getBalanceHistory(days?: number): Promise<BalanceHistoryResponse> {
   const url = days !== undefined ? `/api/balance-history?days=${days}` : '/api/balance-history'
   const res = await fetch(url, { credentials: 'include' })
+  return res.json()
+}
+
+// ---- Sync Log ----
+
+export interface SyncLogEntry {
+  id: number
+  started_at: string
+  finished_at: string | null
+  accounts_fetched: number
+  accounts_failed: number
+  error_text: string | null
+  status: 'success' | 'partial' | 'failed'
+}
+
+export interface SyncLogResponse {
+  entries: SyncLogEntry[]
+}
+
+/**
+ * GET /api/sync-log
+ * Returns the last 7 sync log entries with derived status and sanitized error text.
+ */
+export async function getSyncLog(): Promise<SyncLogResponse> {
+  const res = await fetch('/api/sync-log', { credentials: 'include' })
+  return res.json()
+}
+
+// ---- Growth ----
+
+export interface GrowthData {
+  current_total: string
+  prior_total: string
+  dollar_change: string
+  pct_change: string
+}
+
+export interface GrowthResponse {
+  liquid: GrowthData | null
+  savings: GrowthData | null
+  investments: GrowthData | null
+  growth_badge_enabled: boolean
+}
+
+/**
+ * GET /api/growth
+ * Returns per-panel 30-day growth data with decimal arithmetic.
+ */
+export async function getGrowth(): Promise<GrowthResponse> {
+  const res = await fetch('/api/growth', { credentials: 'include' })
+  return res.json()
+}
+
+// ---- Settings Toggle ----
+
+/**
+ * PUT /api/settings/growth-badge
+ * Persists the growth badge enabled/disabled toggle.
+ */
+export async function saveGrowthBadgeSetting(value: boolean): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/settings/growth-badge', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ value: String(value) }),
+  })
+  if (!res.ok) throw new Error(`Failed to save setting: ${res.status}`)
   return res.json()
 }
