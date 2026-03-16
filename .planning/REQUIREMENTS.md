@@ -73,7 +73,7 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 - [x] **ALERT-04**: Alert email includes rule name, computed value, threshold, and crossing direction with account context
 - [ ] **ALERT-05**: User can configure email provider in settings (SMTP or API service with provider-specific fields)
 - [ ] **ALERT-06**: User can send a test email to verify configuration
-- [ ] **ALERT-07**: User can create, edit, enable/disable, and delete alert rules
+- [x] **ALERT-07**: User can create, edit, enable/disable, and delete alert rules
 
 ### Financial Projections
 
@@ -170,7 +170,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ALERT-04 | Phase 8 | Complete |
 | ALERT-05 | Phase 8 | Pending |
 | ALERT-06 | Phase 8 | Pending |
-| ALERT-07 | Phase 8 | Pending |
+| ALERT-07 | Phase 8 | Complete |
 | PROJ-01 | Phase 9 | Pending |
 | PROJ-02 | Phase 9 | Pending |
 | PROJ-03 | Phase 9 | Pending |

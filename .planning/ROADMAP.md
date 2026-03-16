@@ -168,7 +168,7 @@ Plans:
   3. When the value recovers back across the threshold, the user receives exactly one recovery email (no repeated alerts on subsequent syncs while the condition holds)
   4. User can configure SMTP or API email provider in settings and verify it works with a test email button
   5. User can create, edit, enable/disable, and delete alert rules from a dedicated alerts management page
-**Plans:** 4 plans
+**Plans:** 2/4 plans executed
 
 Plans:
 - [ ] 08-01-PLAN.md — Core alert engine: database migration (alert_rules, alert_history), Go dependencies (expr-lang/expr, go-mail), expression evaluator, AES-256-GCM crypto, 3-state machine engine, SMTP notifier with tests
@@ -203,5 +203,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 5. Data Foundation | v1.1 | 3/3 | Complete | 2026-03-15 |
 | 6. Operational Quick Wins | 3/3 | Complete   | 2026-03-16 | - |
 | 7. Analytics Expansion | v1.1 | 0/3 | Planned | - |
-| 8. Alert System | v1.1 | 0/4 | Planned | - |
+| 8. Alert System | 2/4 | In Progress|  | - |
 | 9. Projection Engine | v1.1 | 0/? | Not started | - |
