@@ -20,9 +20,17 @@ interface AlertRuleFormProps {
   isEdit?: boolean
 }
 
+let operandCounter = 0
+function makeOperandId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try { return crypto.randomUUID() } catch { /* non-secure context */ }
+  }
+  return `op-${Date.now()}-${++operandCounter}`
+}
+
 function makeDefaultOperand(): Operand {
   return {
-    id: crypto.randomUUID(),
+    id: makeOperandId(),
     type: 'bucket',
     ref: 'liquid',
     label: 'Liquid Balance',
