@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react'
-import { getSettings, saveSettings, triggerSync, type SettingsResponse } from '../api/client'
+import { getSettings, saveSettings, triggerSync, saveGrowthBadgeSetting, type SettingsResponse } from '../api/client'
 import { timeAgo } from '../utils/time'
 import AccountsSection from '../components/AccountsSection'
+import SyncHistory from '../components/SyncHistory'
+import DashboardPreferences from '../components/DashboardPreferences'
 import { Toast } from '../components/Toast'
 
 interface SettingsProps {
@@ -16,11 +18,13 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
   const [error, setError] = useState<string | null>(null)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [toasts, setToasts] = useState<string[]>([])
+  const [growthBadgeEnabled, setGrowthBadgeEnabled] = useState<boolean>(true)
 
   async function loadSettings() {
     try {
       const s = await getSettings()
       setSettings(s)
+      setGrowthBadgeEnabled(s.growth_badge_enabled)
     } catch {
       setError('Failed to load settings.')
     }
@@ -74,6 +78,16 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
     }
   }
 
+  async function handleToggleGrowthBadge(newValue: boolean) {
+    setGrowthBadgeEnabled(newValue)
+    try {
+      await saveGrowthBadgeSetting(newValue)
+    } catch {
+      setGrowthBadgeEnabled(!newValue) // Revert
+      setToasts((prev) => [...prev, 'Failed to save preference'])
+    }
+  }
+
   const handleDismissToast = useCallback((index: number) => {
     setToasts((prev) => prev.filter((_, i) => i !== index))
   }, [])
@@ -95,7 +109,7 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
 
         {/* SimpleFIN Configuration Card */}
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 mb-6">
-          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">SimpleFIN Connection</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">SimpleFIN Connection</h2>
 
           <form onSubmit={handleSave} noValidate>
             <div className="mb-4">
@@ -136,7 +150,7 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
 
         {/* Status Card */}
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 mb-6">
-          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Sync Status</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Sync Status</h2>
 
           {settings === null ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading\u2026</p>
@@ -183,7 +197,7 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
 
         {/* Actions Card */}
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 mb-6">
-          <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Actions</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Actions</h2>
 
           {syncMessage && (
             <p className="text-sm text-green-700 dark:text-green-400 mb-3">{syncMessage}</p>
@@ -205,6 +219,21 @@ export default function Settings({ onNavigateDashboard }: SettingsProps) {
             <AccountsSection />
           </div>
         )}
+
+        {/* Sync History */}
+        {settings?.configured && (
+          <div className="mb-6">
+            <SyncHistory />
+          </div>
+        )}
+
+        {/* Dashboard Preferences */}
+        <div className="mb-6">
+          <DashboardPreferences
+            initialValue={growthBadgeEnabled}
+            onToggle={handleToggleGrowthBadge}
+          />
+        </div>
       </div>
 
       {/* Toast notifications */}
