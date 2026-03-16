@@ -65,4 +65,55 @@ describe('PanelCard', () => {
     )
     expect(screen.getByText('Chase \u2013 Checking 1234')).toBeInTheDocument()
   })
+
+  // --- Growth Badge tests ---
+
+  it('renders GrowthBadge with green color when growth is positive', () => {
+    render(
+      <PanelCard
+        panelKey="liquid"
+        total="4230.50"
+        accounts={sampleAccounts}
+        pctChange="5.20"
+        dollarChange="520.00"
+        growthVisible={true}
+      />
+    )
+    const badge = screen.getByText(/5\.2%/)
+    expect(badge.className).toContain('text-green-600')
+    expect(badge.textContent).toContain('+5.2%')
+  })
+
+  it('renders invisible placeholder when growthVisible is false', () => {
+    const { container } = render(
+      <PanelCard
+        panelKey="liquid"
+        total="4230.50"
+        accounts={sampleAccounts}
+        pctChange="5.20"
+        dollarChange="520.00"
+        growthVisible={false}
+      />
+    )
+    // The GrowthBadge span should be invisible
+    const badges = container.querySelectorAll('span.invisible')
+    expect(badges.length).toBeGreaterThan(0)
+  })
+
+  it('renders invisible placeholder when no growth props provided (backwards compat)', () => {
+    const { container } = render(
+      <PanelCard panelKey="liquid" total="4230.50" accounts={sampleAccounts} />
+    )
+    // Without growth props, badge should be invisible placeholder
+    const badges = container.querySelectorAll('span.invisible')
+    expect(badges.length).toBeGreaterThan(0)
+  })
+
+  it('total line uses flex items-baseline layout', () => {
+    const { container } = render(
+      <PanelCard panelKey="liquid" total="4230.50" accounts={sampleAccounts} />
+    )
+    const totalLine = container.querySelector('.flex.items-baseline')
+    expect(totalLine).not.toBeNull()
+  })
 })

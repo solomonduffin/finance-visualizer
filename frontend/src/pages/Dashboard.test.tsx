@@ -31,6 +31,7 @@ vi.mock('../hooks/useDarkMode', () => ({
 const mockGetSummary = vi.mocked(client.getSummary)
 const mockGetAccounts = vi.mocked(client.getAccounts)
 const mockGetBalanceHistory = vi.mocked(client.getBalanceHistory)
+const mockGetGrowth = vi.mocked(client.getGrowth)
 
 const summaryWithSync: client.SummaryResponse = {
   liquid: '5000.00',
@@ -66,6 +67,13 @@ const historyResponse: client.BalanceHistoryResponse = {
   investments: [{ date: '2026-03-14', balance: '49000.00' }, { date: '2026-03-15', balance: '50000.00' }],
 }
 
+const growthNone: client.GrowthResponse = {
+  liquid: null,
+  savings: null,
+  investments: null,
+  growth_badge_enabled: false,
+}
+
 function renderDashboard() {
   return render(
     <MemoryRouter>
@@ -77,6 +85,8 @@ function renderDashboard() {
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    // Default growth mock for all existing tests (no growth data, badges hidden)
+    mockGetGrowth.mockResolvedValue(growthNone)
   })
 
   describe('loading state', () => {
@@ -85,6 +95,7 @@ describe('Dashboard', () => {
       mockGetSummary.mockReturnValue(new Promise(() => {}))
       mockGetAccounts.mockReturnValue(new Promise(() => {}))
       mockGetBalanceHistory.mockReturnValue(new Promise(() => {}))
+      mockGetGrowth.mockReturnValue(new Promise(() => {}))
 
       renderDashboard()
 
@@ -274,11 +285,49 @@ describe('Dashboard', () => {
       mockGetSummary.mockReturnValue(new Promise(() => {}))
       mockGetAccounts.mockReturnValue(new Promise(() => {}))
       mockGetBalanceHistory.mockReturnValue(new Promise(() => {}))
+      mockGetGrowth.mockReturnValue(new Promise(() => {}))
 
       renderDashboard()
 
       expect(screen.queryByTestId('balance-line-chart')).not.toBeInTheDocument()
       expect(screen.queryByTestId('net-worth-donut')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('growth badges', () => {
+    it('passes growth data to panel cards when available', async () => {
+      mockGetSummary.mockResolvedValue(summaryWithSync)
+      mockGetAccounts.mockResolvedValue(accountsResponse)
+      mockGetBalanceHistory.mockResolvedValue(historyResponse)
+      mockGetGrowth.mockResolvedValue({
+        liquid: { current_total: '5200.00', prior_total: '5000.00', dollar_change: '200.00', pct_change: '4.0' },
+        savings: null,
+        investments: null,
+        growth_badge_enabled: true,
+      })
+
+      renderDashboard()
+
+      await waitFor(() => {
+        // Liquid panel should show growth badge with +4.0%
+        expect(screen.getByText(/4\.0%/)).toBeInTheDocument()
+      })
+    })
+
+    it('renders correctly when getGrowth returns null panel data', async () => {
+      mockGetSummary.mockResolvedValue(summaryWithSync)
+      mockGetAccounts.mockResolvedValue(accountsResponse)
+      mockGetBalanceHistory.mockResolvedValue(historyResponse)
+      mockGetGrowth.mockResolvedValue(growthNone)
+
+      renderDashboard()
+
+      await waitFor(() => {
+        // Dashboard still renders panels even with null growth data
+        expect(screen.getByText('Liquid')).toBeInTheDocument()
+        expect(screen.getByText('Savings')).toBeInTheDocument()
+        expect(screen.getByText('Investments')).toBeInTheDocument()
+      })
     })
   })
 })
