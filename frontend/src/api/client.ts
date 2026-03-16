@@ -371,3 +371,149 @@ export async function removeGroupMember(groupId: number, accountId: string): Pro
   if (!res.ok) throw new Error('Failed to remove account from group')
   return res.json()
 }
+
+// ---- Alerts ----
+
+export interface Operand {
+  id: string
+  type: 'bucket' | 'group' | 'account'
+  ref: string
+  label: string
+  operator: '+' | '-'
+}
+
+export interface AlertHistoryEntry {
+  id: number
+  state: 'triggered' | 'recovered'
+  value: string | null
+  notified_at: string
+}
+
+export interface AlertRule {
+  id: number
+  name: string
+  operands: Operand[]
+  expression: string
+  comparison: '<' | '<=' | '>' | '>=' | '=='
+  threshold: string
+  notify_on_recovery: boolean
+  enabled: boolean
+  last_state: 'normal' | 'triggered' | 'recovered'
+  last_eval_at: string | null
+  last_value: string | null
+  created_at: string
+  updated_at: string
+  history: AlertHistoryEntry[]
+}
+
+export interface CreateAlertRequest {
+  name: string
+  operands: Operand[]
+  comparison: string
+  threshold: string
+  notify_on_recovery: boolean
+}
+
+export async function getAlerts(): Promise<AlertRule[]> {
+  const res = await fetch('/api/alerts', { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch alerts')
+  return res.json()
+}
+
+export async function createAlert(data: CreateAlertRequest): Promise<AlertRule> {
+  const res = await fetch('/api/alerts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to create alert' }))
+    throw new Error(body.error || 'Failed to create alert')
+  }
+  return res.json()
+}
+
+export async function updateAlertRule(id: number, data: CreateAlertRequest): Promise<AlertRule> {
+  const res = await fetch(`/api/alerts/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to update alert' }))
+    throw new Error(body.error || 'Failed to update alert')
+  }
+  return res.json()
+}
+
+export async function toggleAlert(id: number, enabled: boolean): Promise<AlertRule> {
+  const res = await fetch(`/api/alerts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) throw new Error('Failed to toggle alert')
+  return res.json()
+}
+
+export async function deleteAlert(id: number): Promise<void> {
+  const res = await fetch(`/api/alerts/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error('Failed to delete alert')
+}
+
+// ---- Email Configuration ----
+
+export interface EmailConfigResponse {
+  configured: boolean
+  host?: string
+  port?: string
+  username?: string
+  from?: string
+  to?: string
+}
+
+export interface EmailConfigRequest {
+  host: string
+  port: string
+  username: string
+  password: string
+  from: string
+  to: string
+}
+
+export async function getEmailConfig(): Promise<EmailConfigResponse> {
+  const res = await fetch('/api/email/config', { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch email config')
+  return res.json()
+}
+
+export async function saveEmailConfig(data: EmailConfigRequest): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/email/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to save email config')
+  return res.json()
+}
+
+export async function sendTestEmail(data: EmailConfigRequest): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/email/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to send test email' }))
+    throw new Error(body.error || 'Failed to send test email')
+  }
+  return res.json()
+}
