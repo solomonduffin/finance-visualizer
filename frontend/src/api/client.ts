@@ -121,11 +121,31 @@ export interface AccountItem {
   account_type_override: string | null
 }
 
+export interface GroupMember {
+  id: string
+  name: string
+  original_name: string
+  balance: string
+  currency: string
+  org_name: string
+  display_name?: string | null
+  account_type_override: string | null
+}
+
+export interface GroupItem {
+  id: number
+  name: string
+  panel_type: string
+  total_balance: string
+  members: GroupMember[]
+}
+
 export interface AccountsResponse {
   liquid: AccountItem[]
   savings: AccountItem[]
   investments: AccountItem[]
   other: AccountItem[]
+  groups: GroupItem[]
 }
 
 export interface UpdateAccountRequest {
@@ -224,11 +244,18 @@ export interface GrowthData {
   pct_change: string
 }
 
+export interface GroupGrowthData {
+  group_id: number
+  name: string
+  growth: GrowthData | null
+}
+
 export interface GrowthResponse {
   liquid: GrowthData | null
   savings: GrowthData | null
   investments: GrowthData | null
   growth_badge_enabled: boolean
+  groups: GroupGrowthData[]
 }
 
 /**
@@ -290,5 +317,57 @@ export async function saveGrowthBadgeSetting(value: boolean): Promise<{ ok: bool
     body: JSON.stringify({ value: String(value) }),
   })
   if (!res.ok) throw new Error(`Failed to save setting: ${res.status}`)
+  return res.json()
+}
+
+// ---- Account Groups ----
+
+export async function createGroup(name: string, panelType: string): Promise<GroupItem> {
+  const res = await fetch('/api/groups', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ name, panel_type: panelType }),
+  })
+  if (!res.ok) throw new Error('Failed to create group')
+  return res.json()
+}
+
+export async function updateGroup(id: number, data: { name?: string; panel_type?: string }): Promise<GroupItem> {
+  const res = await fetch(`/api/groups/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to update group')
+  return res.json()
+}
+
+export async function deleteGroup(id: number): Promise<void> {
+  const res = await fetch(`/api/groups/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error('Failed to delete group')
+}
+
+export async function addGroupMember(groupId: number, accountId: string): Promise<GroupItem> {
+  const res = await fetch(`/api/groups/${groupId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ account_id: accountId }),
+  })
+  if (!res.ok) throw new Error('Failed to add account to group')
+  return res.json()
+}
+
+export async function removeGroupMember(groupId: number, accountId: string): Promise<{ deleted_group: boolean }> {
+  const res = await fetch(`/api/groups/${groupId}/members/${accountId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error('Failed to remove account from group')
   return res.json()
 }
