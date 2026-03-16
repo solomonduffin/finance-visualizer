@@ -46,7 +46,7 @@ func setupRouterTestDB(t *testing.T) *sql.DB {
 func TestProtectedRoute_NoAuth(t *testing.T) {
 	auth.Init(testSecret)
 	database := setupRouterTestDB(t)
-	router := api.NewRouter(auth.TokenAuth(), database)
+	router := api.NewRouter(auth.TokenAuth(), database, "test-secret-key-for-testing")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	w := httptest.NewRecorder()
@@ -60,7 +60,7 @@ func TestProtectedRoute_NoAuth(t *testing.T) {
 func TestProtectedRoute_WithAuth(t *testing.T) {
 	auth.Init(testSecret)
 	database := setupRouterTestDB(t)
-	router := api.NewRouter(auth.TokenAuth(), database)
+	router := api.NewRouter(auth.TokenAuth(), database, "test-secret-key-for-testing")
 
 	// Get a valid JWT first via login
 	loginBody := strings.NewReader(`{"password":"` + testPassword + `"}`)
@@ -98,7 +98,7 @@ func TestProtectedRoute_WithAuth(t *testing.T) {
 func TestProtectedRoute_ExpiredToken(t *testing.T) {
 	auth.Init(testSecret)
 	database := setupRouterTestDB(t)
-	router := api.NewRouter(auth.TokenAuth(), database)
+	router := api.NewRouter(auth.TokenAuth(), database, "test-secret-key-for-testing")
 
 	// Create a token that expired in the past
 	ta := auth.TokenAuth()
@@ -123,7 +123,7 @@ func TestProtectedRoute_ExpiredToken(t *testing.T) {
 func TestSettingsRoute_NoAuth(t *testing.T) {
 	auth.Init(testSecret)
 	database := setupRouterTestDB(t)
-	router := api.NewRouter(auth.TokenAuth(), database)
+	router := api.NewRouter(auth.TokenAuth(), database, "test-secret-key-for-testing")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
 	w := httptest.NewRecorder()
@@ -137,7 +137,7 @@ func TestSettingsRoute_NoAuth(t *testing.T) {
 func TestSettingsRoute_WithAuth(t *testing.T) {
 	auth.Init(testSecret)
 	database := setupRouterTestDB(t)
-	router := api.NewRouter(auth.TokenAuth(), database)
+	router := api.NewRouter(auth.TokenAuth(), database, "test-secret-key-for-testing")
 
 	// Login first to get a JWT cookie
 	loginBody := strings.NewReader(`{"password":"` + testPassword + `"}`)
@@ -180,7 +180,7 @@ func TestSettingsRoute_WithAuth(t *testing.T) {
 func TestLoginRateLimit(t *testing.T) {
 	auth.Init(testSecret)
 	database := setupRouterTestDB(t)
-	router := api.NewRouter(auth.TokenAuth(), database)
+	router := api.NewRouter(auth.TokenAuth(), database, "test-secret-key-for-testing")
 
 	// Send 6 login requests rapidly from the same IP — the 6th should be 429
 	var lastCode int
