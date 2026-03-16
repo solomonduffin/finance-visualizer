@@ -53,10 +53,10 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 ### Dashboard Insights
 
 - [x] **INSIGHT-01**: Each panel card shows percentage change over the last 30 days with green/red color coding
-- [ ] **INSIGHT-02**: User can click net worth donut to navigate to a dedicated net worth page
-- [ ] **INSIGHT-03**: Net worth page shows historical net worth line chart with per-panel breakdown
-- [ ] **INSIGHT-04**: Net worth page shows summary statistics (current net worth, period change in $ and %, all-time high)
-- [ ] **INSIGHT-05**: Net worth page has a time range selector (30d, 90d, 6m, 1y, all)
+- [x] **INSIGHT-02**: User can click net worth donut to navigate to a dedicated net worth page
+- [x] **INSIGHT-03**: Net worth page shows historical net worth line chart with per-panel breakdown
+- [x] **INSIGHT-04**: Net worth page shows summary statistics (current net worth, period change in $ and %, all-time high)
+- [x] **INSIGHT-05**: Net worth page has a time range selector (30d, 90d, 6m, 1y, all)
 - [x] **INSIGHT-06**: User can toggle the 30-day growth rate badge on/off from settings
 
 ### Operational
@@ -156,10 +156,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACCT-04 | Phase 7 | Pending |
 | ACCT-05 | Phase 7 | Pending |
 | INSIGHT-01 | Phase 6 | Complete |
-| INSIGHT-02 | Phase 7 | Pending |
-| INSIGHT-03 | Phase 7 | Pending |
-| INSIGHT-04 | Phase 7 | Pending |
-| INSIGHT-05 | Phase 7 | Pending |
+| INSIGHT-02 | Phase 7 | Complete |
+| INSIGHT-03 | Phase 7 | Complete |
+| INSIGHT-04 | Phase 7 | Complete |
+| INSIGHT-05 | Phase 7 | Complete |
 | INSIGHT-06 | Phase 6 | Complete |
 | OPS-01 | Phase 6 | Complete |
 | OPS-02 | Phase 6 | Complete |
