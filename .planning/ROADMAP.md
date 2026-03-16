@@ -134,7 +134,12 @@ Plans:
   2. Failed sync entries can be expanded to reveal sanitized error details (no credentials or tokens leaked)
   3. Each panel card (liquid, savings, investments) shows a percentage change badge over the last 30 days with green for positive and red for negative
   4. User can toggle the growth rate badge on/off from the settings page
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Backend API: sync log endpoint with sanitization, growth calculation endpoint with shopspring/decimal, settings toggle, TypeScript client types
+- [ ] 06-02-PLAN.md — Settings page: SyncHistory timeline component with expand/collapse errors, DashboardPreferences toggle section
+- [ ] 06-03-PLAN.md — Dashboard: GrowthBadge component with tooltip and invisible placeholder, PanelCard integration, parallel data fetching
 
 ### Phase 7: Analytics Expansion
 **Goal**: Users can create custom account groups to organize accounts (e.g., combining multiple Coinbase wallets into one "Coinbase" group), and all users can explore detailed net worth history on a dedicated page
@@ -185,7 +190,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 3. Backend API | v1.0 | 2/2 | Complete | 2026-03-15 |
 | 4. Frontend Dashboard | v1.0 | 3/3 | Complete | 2026-03-15 |
 | 5. Data Foundation | v1.1 | 3/3 | Complete | 2026-03-15 |
-| 6. Operational Quick Wins | v1.1 | 0/? | Not started | - |
+| 6. Operational Quick Wins | v1.1 | 0/3 | Not started | - |
 | 7. Analytics Expansion | v1.1 | 0/? | Not started | - |
 | 8. Alert System | v1.1 | 0/? | Not started | - |
 | 9. Projection Engine | v1.1 | 0/? | Not started | - |
