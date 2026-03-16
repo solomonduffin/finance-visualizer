@@ -151,7 +151,12 @@ Plans:
   3. User can expand a group to see individual account balances beneath it
   4. Clicking the net worth donut chart navigates to a dedicated net worth page
   5. The net worth page shows a historical line chart with per-panel breakdown, summary statistics (current value, period change in dollars and percent, all-time high), and a time range selector (30d, 90d, 6m, 1y, all)
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Account groups backend: database migration, CRUD API endpoints, extend GetAccounts/GetGrowth with group data
+- [ ] 07-02-PLAN.md — Net worth page: backend API endpoint with time-series and stats, frontend page with stacked area chart, stats bar, time range selector, donut click navigation, nav link
+- [ ] 07-03-PLAN.md — Account groups frontend: GroupRow component, PanelCard group support, AccountsSection group management with drag-and-drop, Dashboard data flow
 
 ### Phase 8: Alert System
 **Goal**: Users define threshold-based alert rules that fire an email exactly once when crossed and once when recovered, with full SMTP configuration in settings
@@ -191,6 +196,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 4. Frontend Dashboard | v1.0 | 3/3 | Complete | 2026-03-15 |
 | 5. Data Foundation | v1.1 | 3/3 | Complete | 2026-03-15 |
 | 6. Operational Quick Wins | 3/3 | Complete   | 2026-03-16 | - |
-| 7. Analytics Expansion | v1.1 | 0/? | Not started | - |
+| 7. Analytics Expansion | v1.1 | 0/3 | Planned | - |
 | 8. Alert System | v1.1 | 0/? | Not started | - |
 | 9. Projection Engine | v1.1 | 0/? | Not started | - |
