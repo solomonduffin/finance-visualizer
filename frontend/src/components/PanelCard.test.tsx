@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { PanelCard } from './PanelCard'
+import type { GroupItem, GroupGrowthData } from '../api/client'
 
 const sampleAccounts = [
   { id: '1', name: 'Chase Checking', balance: '1230.50', org_name: '' },
@@ -115,5 +116,74 @@ describe('PanelCard', () => {
     )
     const totalLine = container.querySelector('.flex.items-baseline')
     expect(totalLine).not.toBeNull()
+  })
+
+  // --- Group rendering tests ---
+
+  const sampleGroups: GroupItem[] = [
+    {
+      id: 1,
+      name: 'Main Bank',
+      panel_type: 'checking',
+      total_balance: '4000.00',
+      members: [
+        { id: 'm1', name: 'Checking', original_name: 'Checking', balance: '2500.00', currency: 'USD', org_name: 'Chase', display_name: null, account_type_override: null },
+        { id: 'm2', name: 'Credit', original_name: 'Credit', balance: '1500.00', currency: 'USD', org_name: 'Chase', display_name: null, account_type_override: null },
+      ],
+    },
+  ]
+
+  const sampleGroupGrowth: GroupGrowthData[] = [
+    { group_id: 1, name: 'Main Bank', growth: { current_total: '4000.00', prior_total: '3800.00', dollar_change: '200.00', pct_change: '5.26' } },
+  ]
+
+  it('renders GroupRow for each group in the groups prop', () => {
+    render(
+      <PanelCard panelKey="liquid" total="8230.50" accounts={sampleAccounts} groups={sampleGroups} />
+    )
+    expect(screen.getByText('Main Bank')).toBeInTheDocument()
+    expect(screen.getByText('$4,000.00')).toBeInTheDocument()
+  })
+
+  it('group rows appear before standalone accounts', () => {
+    const { container } = render(
+      <PanelCard panelKey="liquid" total="8230.50" accounts={sampleAccounts} groups={sampleGroups} />
+    )
+    const allText = container.textContent ?? ''
+    const groupIdx = allText.indexOf('Main Bank')
+    const accountIdx = allText.indexOf('Chase Checking')
+    expect(groupIdx).toBeLessThan(accountIdx)
+  })
+
+  it('clicking a GroupRow toggles expansion', () => {
+    render(
+      <PanelCard panelKey="liquid" total="8230.50" accounts={sampleAccounts} groups={sampleGroups} />
+    )
+    const groupButton = screen.getByRole('button')
+    expect(groupButton).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(groupButton)
+    expect(groupButton).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('renders without groups when groups prop not provided (backward compatible)', () => {
+    render(
+      <PanelCard panelKey="liquid" total="4230.50" accounts={sampleAccounts} />
+    )
+    expect(screen.getByText('Liquid')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('passes group growth data to GroupRow', () => {
+    render(
+      <PanelCard
+        panelKey="liquid"
+        total="8230.50"
+        accounts={sampleAccounts}
+        groups={sampleGroups}
+        groupGrowth={sampleGroupGrowth}
+        growthVisible={true}
+      />
+    )
+    expect(screen.getByText(/5\.3%/)).toBeInTheDocument()
   })
 })

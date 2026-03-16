@@ -36,6 +36,7 @@ const defaultResponse: client.AccountsResponse = {
     makeAccount({ id: 'acc-4', name: '401k', original_name: '401k', org_name: 'Fidelity', balance: '50000.00', account_type: 'investment' }),
   ],
   other: [],
+  groups: [],
 }
 
 const responseWithHidden: client.AccountsResponse = {
@@ -46,6 +47,7 @@ const responseWithHidden: client.AccountsResponse = {
   savings: [],
   investments: [],
   other: [],
+  groups: [],
 }
 
 const responseWithDisplayName: client.AccountsResponse = {
@@ -61,6 +63,28 @@ const responseWithDisplayName: client.AccountsResponse = {
   savings: [],
   investments: [],
   other: [],
+  groups: [],
+}
+
+const responseWithGroups: client.AccountsResponse = {
+  liquid: [
+    makeAccount({ id: 'acc-1', name: 'Standalone', original_name: 'Standalone', org_name: 'Chase', balance: '500.00' }),
+  ],
+  savings: [],
+  investments: [],
+  other: [],
+  groups: [
+    {
+      id: 1,
+      name: 'Main Bank',
+      panel_type: 'checking',
+      total_balance: '3000.00',
+      members: [
+        { id: 'gm-1', name: 'Checking', original_name: 'Checking', balance: '2000.00', currency: 'USD', org_name: 'Chase', display_name: null, account_type_override: null },
+        { id: 'gm-2', name: 'Credit', original_name: 'Credit', balance: '1000.00', currency: 'USD', org_name: 'Chase', display_name: null, account_type_override: null },
+      ],
+    },
+  ],
 }
 
 describe('AccountsSection', () => {
@@ -285,11 +309,43 @@ describe('AccountsSection', () => {
   })
 
   it('returns null when no accounts exist', async () => {
-    mockGetAccounts.mockResolvedValue({ liquid: [], savings: [], investments: [], other: [] })
+    mockGetAccounts.mockResolvedValue({ liquid: [], savings: [], investments: [], other: [], groups: [] })
     const { container } = render(<AccountsSection />)
 
     await waitFor(() => {
       expect(container.querySelector('[data-testid="accounts-section"]')).not.toBeInTheDocument()
+    })
+  })
+
+  // --- Group management tests ---
+
+  it('renders "+ New Group" button', async () => {
+    mockGetAccounts.mockResolvedValue(defaultResponse)
+    render(<AccountsSection />)
+
+    await waitFor(() => {
+      expect(screen.getByText('+ New Group')).toBeInTheDocument()
+    })
+  })
+
+  it('clicking "+ New Group" shows inline input', async () => {
+    mockGetAccounts.mockResolvedValue(defaultResponse)
+    const user = userEvent.setup()
+    render(<AccountsSection />)
+
+    await waitFor(() => screen.getByText('+ New Group'))
+    await user.click(screen.getByText('+ New Group'))
+
+    expect(screen.getByPlaceholderText('Group name')).toBeInTheDocument()
+  })
+
+  it('groups are displayed within their panel sections', async () => {
+    mockGetAccounts.mockResolvedValue(responseWithGroups)
+    render(<AccountsSection />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Main Bank')).toBeInTheDocument()
+      expect(screen.getByText('(2 accounts)')).toBeInTheDocument()
     })
   })
 })

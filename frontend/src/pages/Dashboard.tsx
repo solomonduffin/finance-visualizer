@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getSummary, getAccounts, getBalanceHistory, getGrowth } from '../api/client'
-import type { SummaryResponse, AccountsResponse, BalanceHistoryResponse, GrowthResponse } from '../api/client'
+import type { SummaryResponse, AccountsResponse, BalanceHistoryResponse, GrowthResponse, GroupItem } from '../api/client'
 import { SkeletonDashboard } from '../components/SkeletonDashboard'
 import { EmptyState } from '../components/EmptyState'
 import { PanelCard } from '../components/PanelCard'
@@ -81,9 +81,25 @@ export default function Dashboard() {
     )
   }
 
-  // Visible panels: only render if there are accounts for that panel
+  // Map backend panel_type to frontend panelKey
+  const PANEL_TYPE_MAP: Record<string, PanelKey> = {
+    checking: 'liquid',
+    savings: 'savings',
+    investment: 'investments',
+  }
+
+  // Filter groups by panel for each PanelCard
+  const groupsByPanel: Record<PanelKey, GroupItem[]> = { liquid: [], savings: [], investments: [] }
+  if (accounts?.groups) {
+    for (const group of accounts.groups) {
+      const panelKey = PANEL_TYPE_MAP[group.panel_type]
+      if (panelKey) groupsByPanel[panelKey].push(group)
+    }
+  }
+
+  // Visible panels: render if there are accounts OR groups for that panel
   const visiblePanels = PANEL_KEYS.filter(
-    (key) => accounts && accounts[key].length > 0
+    (key) => accounts && (accounts[key].length > 0 || groupsByPanel[key].length > 0)
   )
 
   // Responsive grid: 1 col mobile, 2 col if 2 panels, 3 col if 3 panels
@@ -113,6 +129,8 @@ export default function Dashboard() {
               panelKey={key}
               total={summary[key]}
               accounts={accounts![key]}
+              groups={groupsByPanel[key]}
+              groupGrowth={growth?.groups}
               pctChange={growth?.[key]?.pct_change}
               dollarChange={growth?.[key]?.dollar_change}
               growthVisible={growth?.growth_badge_enabled ?? false}

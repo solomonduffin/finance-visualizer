@@ -3,9 +3,15 @@ import { DragDropProvider, useDraggable, useDroppable } from '@dnd-kit/react'
 import {
   getAccounts,
   updateAccount,
+  createGroup,
+  addGroupMember,
+  removeGroupMember,
+  deleteGroup as deleteGroupApi,
+  updateGroup,
   type AccountItem,
   type AccountsResponse,
   type UpdateAccountRequest,
+  type GroupItem,
 } from '../api/client'
 import { getAccountDisplayName } from '../utils/account'
 import { formatCurrency } from '../utils/format'
@@ -261,6 +267,15 @@ function DraggableAccountRow({
 
 // --- Account Group (droppable) ---
 
+function TrashIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+    </svg>
+  )
+}
+
 function AccountGroup({
   panelType,
   accounts,
@@ -276,6 +291,13 @@ function AccountGroup({
   onReset,
   onHide,
   onTypeChange,
+  groups,
+  expandedGroupIds,
+  onToggleGroup,
+  deletingGroupId,
+  onRequestDeleteGroup,
+  onConfirmDeleteGroup,
+  onCancelDeleteGroup,
 }: {
   panelType: PanelType
   accounts: AccountItem[]
@@ -291,16 +313,107 @@ function AccountGroup({
   onReset: (id: string) => void
   onHide: (id: string) => void
   onTypeChange: (id: string, newType: PanelType) => void
+  groups?: GroupItem[]
+  expandedGroupIds?: Set<number>
+  onToggleGroup?: (id: number) => void
+  deletingGroupId?: number | null
+  onRequestDeleteGroup?: (id: number) => void
+  onConfirmDeleteGroup?: (id: number) => void
+  onCancelDeleteGroup?: () => void
 }) {
   const { ref } = useDroppable({ id: panelType })
+  const totalCount = accounts.length + (groups?.reduce((sum, g) => sum + g.members.length, 0) ?? 0)
 
   return (
     <div ref={ref} data-testid={`account-group-${panelType}`}>
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1 flex items-center gap-2">
         {PANEL_LABELS[panelType]}
-        <span className="text-xs font-normal text-gray-400">({accounts.length})</span>
+        <span className="text-xs font-normal text-gray-400">({totalCount})</span>
       </h3>
-      {accounts.length === 0 ? (
+
+      {/* Groups */}
+      {groups && groups.length > 0 && (
+        <div className="space-y-1 mb-1">
+          {groups.map((group) => {
+            const isExpanded = expandedGroupIds?.has(group.id) ?? false
+            const isDeleting = deletingGroupId === group.id
+            return (
+              <div key={group.id} data-testid={`group-${group.id}`}>
+                <div className="flex items-center gap-1 py-1 px-3 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => onToggleGroup?.(group.id)}
+                    className="flex items-center gap-1 flex-1 min-w-0 text-left"
+                    aria-expanded={isExpanded}
+                  >
+                    <ChevronIcon expanded={isExpanded} />
+                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{group.name}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">({group.members.length} accounts)</span>
+                  </button>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 shrink-0">
+                    {formatCurrency(group.total_balance)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRequestDeleteGroup?.(group.id)}
+                    className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 shrink-0"
+                    title="Delete group"
+                    aria-label="Delete group"
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
+
+                {/* Delete confirmation */}
+                {isDeleting && (
+                  <div className="mx-3 mb-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-sm">
+                    <p className="text-gray-700 dark:text-gray-300 mb-2">
+                      Delete &quot;{group.name}&quot;? Member accounts will be ungrouped, not deleted.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onCancelDeleteGroup?.()}
+                        className="px-2 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      >
+                        Keep Group
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onConfirmDeleteGroup?.(group.id)}
+                        className="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-400"
+                      >
+                        Delete Group
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Expanded members */}
+                {isExpanded && (
+                  <div className="pl-8 space-y-0.5">
+                    {group.members.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex justify-between items-center text-sm py-1 px-3"
+                      >
+                        <span className="text-gray-600 dark:text-gray-300 truncate pr-2">
+                          {getAccountDisplayName(member)}
+                        </span>
+                        <span className="text-gray-700 dark:text-gray-300 font-medium shrink-0">
+                          {formatCurrency(member.balance)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {accounts.length === 0 && (!groups || groups.length === 0) ? (
         <p className="text-xs text-gray-400 dark:text-gray-500 py-2 px-3">No accounts</p>
       ) : (
         <div className="space-y-0.5">
@@ -340,6 +453,10 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
   const [hiddenExpanded, setHiddenExpanded] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [creatingGroup, setCreatingGroup] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<number>>(new Set())
+  const [deletingGroupId, setDeletingGroupId] = useState<number | null>(null)
 
   // Suppress unused variable warning - onAccountRestored is called by parent
   void onAccountRestored
@@ -529,6 +646,65 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
     }
   }
 
+  async function handleCreateGroup(panelType: PanelType) {
+    const trimmed = newGroupName.trim()
+    if (!trimmed) return
+    try {
+      await createGroup(trimmed, PANEL_TYPE_TO_OVERRIDE[panelType])
+      setCreatingGroup(false)
+      setNewGroupName('')
+      await loadAccounts()
+    } catch {
+      // keep input open on error
+    }
+  }
+
+  async function handleAddGroupMember(groupId: number, accountId: string) {
+    try {
+      await addGroupMember(groupId, accountId)
+      await loadAccounts()
+    } catch {
+      // silently fail
+    }
+  }
+
+  async function handleRemoveGroupMember(groupId: number, accountId: string) {
+    try {
+      await removeGroupMember(groupId, accountId)
+      await loadAccounts()
+    } catch {
+      // silently fail
+    }
+  }
+
+  async function handleDeleteGroup(groupId: number) {
+    setDeletingGroupId(null)
+    try {
+      await deleteGroupApi(groupId)
+      await loadAccounts()
+    } catch {
+      // silently fail
+    }
+  }
+
+  async function handleGroupPanelChange(groupId: number, newPanelType: PanelType) {
+    try {
+      await updateGroup(groupId, { panel_type: PANEL_TYPE_TO_OVERRIDE[newPanelType] })
+      await loadAccounts()
+    } catch {
+      // silently fail
+    }
+  }
+
+  function toggleGroupExpanded(id: number) {
+    setExpandedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function handleDragEnd(event: any) {
     const { source, target } = event.operation ?? {}
@@ -536,12 +712,34 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
 
     const sourceId = String(source.id)
     const sourcePanelType = source.data?.panelType as PanelType | undefined
-    const targetId = String(target.id) as PanelType
+    const sourceGroupId = source.data?.groupId as number | undefined
+    const targetId = String(target.id)
 
-    // Only handle drops on panel group droppables (not on other accounts)
-    if (!PANEL_ORDER.includes(targetId)) return
-    if (sourcePanelType && sourcePanelType !== targetId) {
-      handleTypeChange(sourceId, targetId)
+    // Drop onto a group droppable (target id starts with "group-")
+    if (targetId.startsWith('group-')) {
+      const targetGroupId = Number(targetId.replace('group-', ''))
+      if (sourceGroupId && sourceGroupId !== targetGroupId) {
+        // Move between groups
+        handleRemoveGroupMember(sourceGroupId, sourceId).then(() => handleAddGroupMember(targetGroupId, sourceId))
+      } else if (!sourceGroupId) {
+        // Add standalone account to group
+        handleAddGroupMember(targetGroupId, sourceId)
+      }
+      return
+    }
+
+    // Drop onto a panel droppable
+    if (!PANEL_ORDER.includes(targetId as PanelType)) return
+    const targetPanelType = targetId as PanelType
+
+    if (sourceGroupId) {
+      // Remove from group (ungroup)
+      handleRemoveGroupMember(sourceGroupId, sourceId)
+      return
+    }
+
+    if (sourcePanelType && sourcePanelType !== targetPanelType) {
+      handleTypeChange(sourceId, targetPanelType)
     }
   }
 
@@ -563,32 +761,69 @@ export default function AccountsSection({ onAccountRestored }: AccountsSectionPr
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md p-6" data-testid="accounts-section">
-      <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Accounts</h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Accounts</h2>
+        <button
+          type="button"
+          onClick={() => setCreatingGroup(true)}
+          className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"
+        >
+          + New Group
+        </button>
+      </div>
+
+      {creatingGroup && (
+        <div className="mb-4">
+          <input
+            type="text"
+            value={newGroupName}
+            onChange={(e) => setNewGroupName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newGroupName.trim()) handleCreateGroup('liquid')
+              if (e.key === 'Escape') { setCreatingGroup(false); setNewGroupName('') }
+            }}
+            autoFocus
+            placeholder="Group name"
+            className="text-sm border border-blue-400 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          />
+        </div>
+      )}
 
       <DragDropProvider onDragEnd={handleDragEnd}>
         <div className="space-y-4">
           {PANEL_ORDER.map((panelType) => {
             const panelAccounts = visibleAccounts[panelType]
+            const panelGroups = accounts?.groups?.filter(
+              (g) => g.panel_type === PANEL_TYPE_TO_OVERRIDE[panelType]
+            ) ?? []
             // Only show groups that have accounts or are receiving drops
-            if (panelAccounts.length === 0 && panelType === 'other') return null
+            if (panelAccounts.length === 0 && panelGroups.length === 0 && panelType === 'other') return null
             return (
-              <AccountGroup
-                key={panelType}
-                panelType={panelType}
-                accounts={panelAccounts}
-                editingId={editingId}
-                editValue={editValue}
-                savingId={savingId}
-                errorId={errorId}
-                isMobile={isMobile}
-                onStartEdit={handleStartEdit}
-                onEditChange={handleEditChange}
-                onSaveEdit={handleSaveEdit}
-                onCancelEdit={handleCancelEdit}
-                onReset={handleReset}
-                onHide={handleHide}
-                onTypeChange={handleTypeChange}
-              />
+              <div key={panelType}>
+                <AccountGroup
+                  panelType={panelType}
+                  accounts={panelAccounts}
+                  editingId={editingId}
+                  editValue={editValue}
+                  savingId={savingId}
+                  errorId={errorId}
+                  isMobile={isMobile}
+                  onStartEdit={handleStartEdit}
+                  onEditChange={handleEditChange}
+                  onSaveEdit={handleSaveEdit}
+                  onCancelEdit={handleCancelEdit}
+                  onReset={handleReset}
+                  onHide={handleHide}
+                  onTypeChange={handleTypeChange}
+                  groups={panelGroups}
+                  expandedGroupIds={expandedGroupIds}
+                  onToggleGroup={toggleGroupExpanded}
+                  deletingGroupId={deletingGroupId}
+                  onRequestDeleteGroup={setDeletingGroupId}
+                  onConfirmDeleteGroup={handleDeleteGroup}
+                  onCancelDeleteGroup={() => setDeletingGroupId(null)}
+                />
+              </div>
             )
           })}
         </div>
