@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/solomon/finance-visualizer/internal/alerts"
 	"github.com/solomon/finance-visualizer/internal/simplefin"
 )
 
@@ -64,7 +65,7 @@ func NextRunTime(hour int) time.Time {
 // Returns the display names of any restored accounts (for frontend toast notification).
 // Per-account errors are isolated: one bad account does not abort the run.
 // Concurrent calls are serialised via syncMu.
-func SyncOnce(ctx context.Context, db *sql.DB) ([]string, error) {
+func SyncOnce(ctx context.Context, db *sql.DB, jwtSecret string) ([]string, error) {
 	syncMu.Lock()
 	defer syncMu.Unlock()
 
@@ -165,6 +166,14 @@ func SyncOnce(ctx context.Context, db *sql.DB) ([]string, error) {
 	}
 
 	finalize(fetched, failed, nil)
+
+	// Evaluate alert rules (best-effort, never fails sync)
+	if fetched > 0 {
+		if evalErr := alerts.EvaluateAll(ctx, db, jwtSecret); evalErr != nil {
+			slog.Error("sync: alert evaluation failed", "err", evalErr)
+		}
+	}
+
 	slog.Info("sync: complete", "fetched", fetched, "failed", failed)
 	return restored, nil
 }
@@ -289,7 +298,7 @@ func restoreReturningAccounts(ctx context.Context, db *sql.DB, seenIDs []string)
 
 // RunScheduler runs SyncOnce once per day at syncHour (0-23, local time).
 // It blocks until ctx is cancelled.
-func RunScheduler(ctx context.Context, syncHour int, db *sql.DB) {
+func RunScheduler(ctx context.Context, syncHour int, db *sql.DB, jwtSecret string) {
 	for {
 		next := NextRunTime(syncHour)
 		timer := time.NewTimer(time.Until(next))
@@ -298,7 +307,7 @@ func RunScheduler(ctx context.Context, syncHour int, db *sql.DB) {
 			timer.Stop()
 			return
 		case <-timer.C:
-			if _, err := SyncOnce(ctx, db); err != nil {
+			if _, err := SyncOnce(ctx, db, jwtSecret); err != nil {
 				slog.Error("sync: scheduler run failed", "err", err)
 			}
 		}

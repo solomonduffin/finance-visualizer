@@ -128,7 +128,7 @@ func TestSaveSettings_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/settings", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handlers.SaveSettings(database).ServeHTTP(w, req)
+	handlers.SaveSettings(database, "test-secret").ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -162,7 +162,7 @@ func TestSaveSettings_EmptyURL(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/settings", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handlers.SaveSettings(database).ServeHTTP(w, req)
+	handlers.SaveSettings(database, "test-secret").ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for empty access_url, got %d", w.Code)
@@ -176,7 +176,7 @@ func TestSaveSettings_TriggerSync(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/settings", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handlers.SaveSettings(database).ServeHTTP(w, req)
+	handlers.SaveSettings(database, "test-secret").ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -212,7 +212,7 @@ func TestSyncNow_Success(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/sync/now", nil)
 	w := httptest.NewRecorder()
-	handlers.SyncNow(database).ServeHTTP(w, req)
+	handlers.SyncNow(database, "test-secret").ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -246,7 +246,7 @@ func TestSyncNow_NoConfig(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/sync/now", nil)
 	w := httptest.NewRecorder()
-	handlers.SyncNow(database).ServeHTTP(w, req)
+	handlers.SyncNow(database, "test-secret").ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())

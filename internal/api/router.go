@@ -20,7 +20,7 @@ import (
 //   - CORS middleware (allows localhost:5173 for Vite dev server)
 //   - Public login route with IP rate limiting (5 requests per 30 seconds)
 //   - Protected route group requiring valid JWT cookie named "jwt"
-func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
+func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB, jwtSecret string) http.Handler {
 	r := chi.NewRouter()
 
 	// Request logger middleware
@@ -50,8 +50,8 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
 		r.Use(jwtauth.Authenticator(tokenAuth))
 		r.Get("/api/health", handlers.Health)
 		r.Get("/api/settings", handlers.GetSettings(database))
-		r.Post("/api/settings", handlers.SaveSettings(database))
-		r.Post("/api/sync/now", handlers.SyncNow(database))
+		r.Post("/api/settings", handlers.SaveSettings(database, jwtSecret))
+		r.Post("/api/sync/now", handlers.SyncNow(database, jwtSecret))
 		r.Get("/api/summary", handlers.GetSummary(database))
 		r.Get("/api/accounts", handlers.GetAccounts(database))
 		r.Patch("/api/accounts/{id}", handlers.UpdateAccount(database))
@@ -65,6 +65,14 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB) http.Handler {
 		r.Delete("/api/groups/{id}", handlers.DeleteGroup(database))
 		r.Post("/api/groups/{id}/members", handlers.AddGroupMember(database))
 		r.Delete("/api/groups/{id}/members/{accountId}", handlers.RemoveGroupMember(database))
+		r.Post("/api/alerts", handlers.CreateAlert(database))
+		r.Get("/api/alerts", handlers.ListAlerts(database))
+		r.Put("/api/alerts/{id}", handlers.UpdateAlert(database))
+		r.Patch("/api/alerts/{id}", handlers.ToggleAlert(database))
+		r.Delete("/api/alerts/{id}", handlers.DeleteAlert(database))
+		r.Post("/api/email/config", handlers.SaveEmailConfig(database, jwtSecret))
+		r.Get("/api/email/config", handlers.GetEmailConfig(database))
+		r.Post("/api/email/test", handlers.TestEmail(database, jwtSecret))
 	})
 
 	return r

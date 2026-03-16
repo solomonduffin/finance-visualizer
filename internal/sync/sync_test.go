@@ -64,7 +64,7 @@ func TestSyncOnce_NoAccessURL(t *testing.T) {
 	ctx := context.Background()
 
 	// No access URL in settings — SyncOnce should be a no-op.
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestSyncOnce_Success(t *testing.T) {
 	srv := newMockServer(t, accounts)
 	setAccessURL(t, database, srv.URL+"/simplefin")
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("SyncOnce error: %v", err)
 	}
 
@@ -158,7 +158,7 @@ func TestSyncOnce_FirstSync(t *testing.T) {
 	t.Cleanup(srv.Close)
 	setAccessURL(t, database, srv.URL+"/simplefin")
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("SyncOnce error: %v", err)
 	}
 
@@ -212,7 +212,7 @@ func TestSyncOnce_SubsequentSync(t *testing.T) {
 	t.Cleanup(srv.Close)
 	setAccessURL(t, database, srv.URL+"/simplefin")
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("SyncOnce error: %v", err)
 	}
 
@@ -243,12 +243,12 @@ func TestInsertSnapshot_Duplicate(t *testing.T) {
 	setAccessURL(t, database, srv.URL+"/simplefin")
 
 	// First sync.
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first SyncOnce error: %v", err)
 	}
 
 	// Second sync with the same data.
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("second SyncOnce error: %v", err)
 	}
 
@@ -280,7 +280,7 @@ func TestSyncOnce_UpdatesSameDayBalance(t *testing.T) {
 	srv1 := newMockServer(t, accounts1)
 	setAccessURL(t, database, srv1.URL+"/simplefin")
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first SyncOnce error: %v", err)
 	}
 
@@ -298,7 +298,7 @@ func TestSyncOnce_UpdatesSameDayBalance(t *testing.T) {
 	srv2 := newMockServer(t, accounts2)
 	setAccessURL(t, database, srv2.URL+"/simplefin")
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("second SyncOnce error: %v", err)
 	}
 
@@ -339,7 +339,7 @@ func TestUpsertAccount(t *testing.T) {
 	srv := newMockServer(t, accounts)
 	setAccessURL(t, database, srv.URL+"/simplefin")
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first SyncOnce: %v", err)
 	}
 
@@ -359,7 +359,7 @@ func TestUpsertAccount(t *testing.T) {
 		_, _ = w.Write(updatedData)
 	})
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("second SyncOnce: %v", err)
 	}
 
@@ -398,7 +398,7 @@ func TestSyncOnce_PartialFailure(t *testing.T) {
 	srv := newMockServer(t, accounts)
 	setAccessURL(t, database, srv.URL+"/simplefin")
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("SyncOnce error: %v", err)
 	}
 
@@ -522,7 +522,7 @@ func TestSyncMutex(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		events <- event{1, true}
-		_, _ = finSync.SyncOnce(ctx, database)
+		_, _ = finSync.SyncOnce(ctx, database, "")
 		events <- event{1, false}
 	}()
 
@@ -533,7 +533,7 @@ func TestSyncMutex(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		events <- event{2, true}
-		_, _ = finSync.SyncOnce(ctx, database)
+		_, _ = finSync.SyncOnce(ctx, database, "")
 		events <- event{2, false}
 	}()
 
@@ -628,7 +628,7 @@ func TestSoftDeleteStaleAccounts(t *testing.T) {
 	}
 	srv1 := newMockServer(t, accounts1)
 	setAccessURL(t, database, srv1.URL+"/simplefin")
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
@@ -648,7 +648,7 @@ func TestSoftDeleteStaleAccounts(t *testing.T) {
 	}
 	srv2 := newMockServer(t, accounts2)
 	setAccessURL(t, database, srv2.URL+"/simplefin")
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
@@ -698,7 +698,7 @@ func TestSoftDeleteStaleAccounts_DoesNotReHide(t *testing.T) {
 	}
 	srv := newMockServer(t, accounts)
 	setAccessURL(t, database, srv.URL+"/simplefin")
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
@@ -723,7 +723,7 @@ func TestSoftDeleteStaleAccounts_DoesNotReHide(t *testing.T) {
 		_, _ = w.Write(updatedData)
 	})
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
@@ -754,7 +754,7 @@ func TestRestoreReturningAccounts(t *testing.T) {
 	}
 	srv := newMockServer(t, accounts)
 	setAccessURL(t, database, srv.URL+"/simplefin")
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
@@ -783,7 +783,7 @@ func TestRestoreReturningAccounts(t *testing.T) {
 		_, _ = w.Write(updatedData)
 	})
 
-	restored, err := finSync.SyncOnce(ctx, database)
+	restored, err := finSync.SyncOnce(ctx, database, "")
 	if err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
@@ -823,7 +823,7 @@ func TestSyncOnce_SoftDelete_PreservesSnapshots(t *testing.T) {
 	}
 	srv := newMockServer(t, accounts1)
 	setAccessURL(t, database, srv.URL+"/simplefin")
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
@@ -848,7 +848,7 @@ func TestSyncOnce_SoftDelete_PreservesSnapshots(t *testing.T) {
 		_, _ = w.Write(updatedData)
 	})
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 
@@ -874,7 +874,7 @@ func TestProcessAccount_DoesNotOverwriteUserColumns(t *testing.T) {
 	}
 	srv := newMockServer(t, accounts)
 	setAccessURL(t, database, srv.URL+"/simplefin")
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 
@@ -892,7 +892,7 @@ func TestProcessAccount_DoesNotOverwriteUserColumns(t *testing.T) {
 		_, _ = w.Write(updatedData)
 	})
 
-	if _, err := finSync.SyncOnce(ctx, database); err != nil {
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 

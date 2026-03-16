@@ -77,7 +77,7 @@ func GetSettings(database *sql.DB) http.HandlerFunc {
 
 // SaveSettings returns an http.HandlerFunc that handles POST /api/settings.
 // It saves the SimpleFIN access URL and triggers an immediate first sync.
-func SaveSettings(database *sql.DB) http.HandlerFunc {
+func SaveSettings(database *sql.DB, jwtSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Body == nil {
 			http.Error(w, `{"error":"request body required"}`, http.StatusBadRequest)
@@ -120,7 +120,7 @@ func SaveSettings(database *sql.DB) http.HandlerFunc {
 		// Trigger immediate first sync in a goroutine.
 		// Use context.Background() so the sync isn't cancelled when the HTTP response completes.
 		go func() {
-			_, _ = gosync.SyncOnce(context.Background(), database)
+			_, _ = gosync.SyncOnce(context.Background(), database, jwtSecret)
 		}()
 
 		w.Header().Set("Content-Type", "application/json")
@@ -138,11 +138,11 @@ type syncNowResponse struct {
 // It runs a synchronous sync and returns restored account names in the response.
 // Sync errors are logged but the handler always returns ok:true (matching previous behavior
 // where sync was fire-and-forget).
-func SyncNow(database *sql.DB) http.HandlerFunc {
+func SyncNow(database *sql.DB, jwtSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Run sync synchronously so we can return restored account names.
 		// The sync mutex prevents concurrent runs.
-		restored, err := gosync.SyncOnce(r.Context(), database)
+		restored, err := gosync.SyncOnce(r.Context(), database, jwtSecret)
 		if err != nil {
 			// Log the error but don't fail the HTTP response — sync errors are expected
 			// when the access URL is unreachable or invalid.

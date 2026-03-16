@@ -80,10 +80,10 @@ func main() {
 	slog.Info("auth initialized")
 
 	// Create the chi router with all middleware and routes.
-	router := api.NewRouter(auth.TokenAuth(), database)
+	router := api.NewRouter(auth.TokenAuth(), database, cfg.JWTSecret)
 
 	// Start the daily sync scheduler goroutine.
-	go gosync.RunScheduler(ctx, cfg.SyncHour, database)
+	go gosync.RunScheduler(ctx, cfg.SyncHour, database, cfg.JWTSecret)
 	slog.Info("sync scheduler started", "hour", cfg.SyncHour)
 
 	// Start the HTTP server.
