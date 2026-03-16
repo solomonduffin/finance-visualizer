@@ -23,12 +23,33 @@ type accountItemJSON struct {
 	AccountTypeOverride *string `json:"account_type_override"`
 }
 
+// groupItemJSON mirrors the groupItem struct in the accounts response.
+type groupItemJSON struct {
+	ID           int                   `json:"id"`
+	Name         string                `json:"name"`
+	PanelType    string                `json:"panel_type"`
+	TotalBalance string                `json:"total_balance"`
+	Members      []groupMemberItemJSON `json:"members"`
+}
+
+type groupMemberItemJSON struct {
+	ID                  string  `json:"id"`
+	Name                string  `json:"name"`
+	OriginalName        string  `json:"original_name"`
+	Balance             string  `json:"balance"`
+	Currency            string  `json:"currency"`
+	OrgName             string  `json:"org_name"`
+	DisplayName         *string `json:"display_name"`
+	AccountTypeOverride *string `json:"account_type_override"`
+}
+
 // accountsResponseJSON mirrors the grouped response from GetAccounts.
 type accountsResponseJSON struct {
 	Liquid      []accountItemJSON `json:"liquid"`
 	Savings     []accountItemJSON `json:"savings"`
 	Investments []accountItemJSON `json:"investments"`
 	Other       []accountItemJSON `json:"other"`
+	Groups      []groupItemJSON   `json:"groups"`
 }
 
 func TestGetAccounts_GroupedByType(t *testing.T) {
@@ -461,5 +482,157 @@ func TestGetAccounts_IncludeHidden(t *testing.T) {
 	}
 	if !hiddenFound {
 		t.Error("hidden account chk2 not found or missing hidden_at")
+	}
+}
+
+func TestGetAccounts_GroupsArrayPresent(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	// No groups, no accounts — groups should be empty array not null
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var rawMap map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &rawMap); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if string(rawMap["groups"]) != "[]" {
+		t.Errorf("groups: got %s, want [] (empty array, not null)", rawMap["groups"])
+	}
+}
+
+func TestGetAccounts_GroupedAccountExcludedFromPanels(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "acct1", "name": "Coinbase BTC", "account_type": "investment", "currency": "USD", "org_name": "Coinbase"},
+		{"id": "acct2", "name": "Fidelity 401k", "account_type": "investment", "currency": "USD", "org_name": "Fidelity"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "acct1", "balance": "5000.00", "balance_date": "2024-01-01"},
+		{"account_id": "acct2", "balance": "3000.00", "balance_date": "2024-01-01"},
+	})
+
+	// Create group and add acct1
+	_, err := database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('Coinbase', 'investment')`)
+	if err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+	_, err = database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'acct1')`)
+	if err != nil {
+		t.Fatalf("failed to add member: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var resp accountsResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// acct1 should NOT be in investments panel (it's in a group)
+	for _, inv := range resp.Investments {
+		if inv.ID == "acct1" {
+			t.Error("grouped account acct1 should NOT appear in investments panel")
+		}
+	}
+
+	// acct2 should still be in investments panel
+	found := false
+	for _, inv := range resp.Investments {
+		if inv.ID == "acct2" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("standalone account acct2 should appear in investments panel")
+	}
+
+	// acct1 should be inside a group in the groups array
+	if len(resp.Groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(resp.Groups))
+	}
+	if resp.Groups[0].Name != "Coinbase" {
+		t.Errorf("group name: got %q, want %q", resp.Groups[0].Name, "Coinbase")
+	}
+	if len(resp.Groups[0].Members) != 1 {
+		t.Fatalf("expected 1 member in group, got %d", len(resp.Groups[0].Members))
+	}
+	if resp.Groups[0].Members[0].ID != "acct1" {
+		t.Errorf("member id: got %q, want %q", resp.Groups[0].Members[0].ID, "acct1")
+	}
+}
+
+func TestGetAccounts_GroupTotalBalance(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "cb1", "name": "Coinbase BTC", "account_type": "investment", "currency": "USD", "org_name": "Coinbase"},
+		{"id": "cb2", "name": "Coinbase ETH", "account_type": "investment", "currency": "USD", "org_name": "Coinbase"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "cb1", "balance": "5000.00", "balance_date": "2024-01-01"},
+		{"account_id": "cb2", "balance": "3000.00", "balance_date": "2024-01-01"},
+	})
+
+	_, err := database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('Coinbase', 'investment')`)
+	if err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+	database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'cb1')`)
+	database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'cb2')`)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var resp accountsResponseJSON
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	if len(resp.Groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(resp.Groups))
+	}
+	// 5000 + 3000 = 8000
+	if resp.Groups[0].TotalBalance != "8000.00" {
+		t.Errorf("total_balance: got %q, want %q", resp.Groups[0].TotalBalance, "8000.00")
+	}
+}
+
+func TestGetAccounts_GroupPanelTypeCheckingMapsToLiquid(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "BofA Checking", "account_type": "checking", "currency": "USD", "org_name": "BofA"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+	})
+
+	_, err := database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('BofA Bundle', 'checking')`)
+	if err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+	database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'chk1')`)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
+	w := httptest.NewRecorder()
+	handlers.GetAccounts(database)(w, req)
+
+	var resp accountsResponseJSON
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	if len(resp.Groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(resp.Groups))
+	}
+	if resp.Groups[0].PanelType != "checking" {
+		t.Errorf("group panel_type: got %q, want %q", resp.Groups[0].PanelType, "checking")
+	}
+	// chk1 should NOT be in liquid panel since it's grouped
+	if len(resp.Liquid) != 0 {
+		t.Errorf("expected 0 liquid accounts (grouped), got %d", len(resp.Liquid))
 	}
 }

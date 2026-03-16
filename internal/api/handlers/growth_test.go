@@ -404,3 +404,162 @@ func TestGetSettings_GrowthBadgeDisabled(t *testing.T) {
 		t.Error("expected growth_badge_enabled=false when setting is 'false'")
 	}
 }
+
+func TestGetGrowth_GroupGrowthData(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	today := time.Now().Format("2006-01-02")
+	prior := time.Now().AddDate(0, 0, -31).Format("2006-01-02")
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "cb1", "name": "Coinbase BTC", "account_type": "investment", "currency": "USD", "org_name": "Coinbase"},
+		{"id": "cb2", "name": "Coinbase ETH", "account_type": "investment", "currency": "USD", "org_name": "Coinbase"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "cb1", "balance": "6000.00", "balance_date": today},
+		{"account_id": "cb2", "balance": "4000.00", "balance_date": today},
+		{"account_id": "cb1", "balance": "5000.00", "balance_date": prior},
+		{"account_id": "cb2", "balance": "3000.00", "balance_date": prior},
+	})
+
+	// Create group
+	database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('Coinbase', 'investment')`)
+	database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'cb1')`)
+	database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'cb2')`)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/growth", nil)
+	w := httptest.NewRecorder()
+	handlers.GetGrowth(database).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Groups []struct {
+			GroupID int    `json:"group_id"`
+			Name    string `json:"name"`
+			Growth  *struct {
+				CurrentTotal string `json:"current_total"`
+				PriorTotal   string `json:"prior_total"`
+				PctChange    string `json:"pct_change"`
+			} `json:"growth"`
+		} `json:"groups"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+
+	if len(resp.Groups) != 1 {
+		t.Fatalf("expected 1 group in growth response, got %d", len(resp.Groups))
+	}
+
+	g := resp.Groups[0]
+	if g.Name != "Coinbase" {
+		t.Errorf("group name: got %q, want %q", g.Name, "Coinbase")
+	}
+	if g.Growth == nil {
+		t.Fatal("expected group growth data, got nil")
+	}
+	// Current: 6000 + 4000 = 10000, Prior: 5000 + 3000 = 8000
+	if g.Growth.CurrentTotal != "10000.00" {
+		t.Errorf("group current_total: got %q, want %q", g.Growth.CurrentTotal, "10000.00")
+	}
+	if g.Growth.PriorTotal != "8000.00" {
+		t.Errorf("group prior_total: got %q, want %q", g.Growth.PriorTotal, "8000.00")
+	}
+	// (10000-8000)/8000 * 100 = 25%
+	if g.Growth.PctChange != "25.00" {
+		t.Errorf("group pct_change: got %q, want %q", g.Growth.PctChange, "25.00")
+	}
+}
+
+func TestGetGrowth_GroupGrowthNilWhenNoPrior(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	today := time.Now().Format("2006-01-02")
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "acct1", "name": "Account 1", "account_type": "investment", "currency": "USD", "org_name": ""},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "acct1", "balance": "1000.00", "balance_date": today},
+	})
+
+	database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('Group1', 'investment')`)
+	database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'acct1')`)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/growth", nil)
+	w := httptest.NewRecorder()
+	handlers.GetGrowth(database).ServeHTTP(w, req)
+
+	var resp struct {
+		Groups []struct {
+			Growth *struct{} `json:"growth"`
+		} `json:"groups"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+
+	if len(resp.Groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(resp.Groups))
+	}
+	if resp.Groups[0].Growth != nil {
+		t.Error("expected group growth=nil when no prior data")
+	}
+}
+
+func TestGetGrowth_GroupedAccountExcludedFromPanelTotals(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	today := time.Now().Format("2006-01-02")
+	prior := time.Now().AddDate(0, 0, -31).Format("2006-01-02")
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "inv1", "name": "Standalone Investment", "account_type": "investment", "currency": "USD", "org_name": ""},
+		{"id": "inv2", "name": "Grouped Investment", "account_type": "investment", "currency": "USD", "org_name": ""},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "inv1", "balance": "2000.00", "balance_date": today},
+		{"account_id": "inv2", "balance": "5000.00", "balance_date": today},
+		{"account_id": "inv1", "balance": "1000.00", "balance_date": prior},
+		{"account_id": "inv2", "balance": "4000.00", "balance_date": prior},
+	})
+
+	// Group inv2, but with panel_type=savings (NOT investment)
+	database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('Moved Group', 'savings')`)
+	database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'inv2')`)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/growth", nil)
+	w := httptest.NewRecorder()
+	handlers.GetGrowth(database).ServeHTTP(w, req)
+
+	var resp struct {
+		Investments *struct {
+			CurrentTotal string `json:"current_total"`
+		} `json:"investments"`
+		Savings *struct {
+			CurrentTotal string `json:"current_total"`
+		} `json:"savings"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+
+	// Investments should only have inv1 (standalone) = 2000
+	if resp.Investments == nil {
+		t.Fatal("expected investments growth data")
+	}
+	if resp.Investments.CurrentTotal != "2000.00" {
+		t.Errorf("investments current_total: got %q, want %q (grouped account excluded)", resp.Investments.CurrentTotal, "2000.00")
+	}
+
+	// Savings should have the group's balance = 5000 (inv2 via group panel_type=savings)
+	if resp.Savings == nil {
+		t.Fatal("expected savings growth data (from group)")
+	}
+	if resp.Savings.CurrentTotal != "5000.00" {
+		t.Errorf("savings current_total: got %q, want %q (group contributes to savings)", resp.Savings.CurrentTotal, "5000.00")
+	}
+}
