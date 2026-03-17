@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
 status: executing
-stopped_at: Completed 09-02-PLAN.md
-last_updated: "2026-03-17T03:04:06Z"
-last_activity: 2026-03-17 — Completed Plan 09-02 (Projection Settings API & Frontend Client)
+stopped_at: Completed 09-04-PLAN.md
+last_updated: "2026-03-17T03:13:06Z"
+last_activity: 2026-03-17 — Completed Plan 09-04 (Configuration UI Components)
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 18
-  completed_plans: 15
-  percent: 83
+  completed_plans: 16
+  percent: 89
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 9 of 9 (Projection Engine)
-Plan: 4 of 5 (09-02 complete)
+Plan: 5 of 5 (09-04 complete)
 Status: In Progress
-Last activity: 2026-03-17 — Completed Plan 09-02 (Projection Settings API & Frontend Client)
+Last activity: 2026-03-17 — Completed Plan 09-04 (Configuration UI Components)
 
-Progress: [████████░░] 83% (15/18 plans complete through Phase 9.4)
+Progress: [█████████░] 89% (16/18 plans complete through Phase 9.5)
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [████████░░] 83% (15/18 plans complete through Pha
 | Phase 09 P01 | 6min | 2 tasks | 6 files |
 | Phase 09 P03 | 4min | 2 tasks | 6 files |
 | Phase 09 P02 | 4min | 2 tasks | 4 files |
+| Phase 09 P04 | 6min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,9 @@ Recent decisions affecting current work:
 - [Phase 09]: Compound interest test expectation corrected: plan ~$16386 vs actual $16651.05 (contributions also compound)
 - [Phase 09]: hasHoldings flag prevents double-counting: accounts with holdings skipped in account loop
 - [Phase 09]: Allocation validation suppresses income when sum != 100% (growth-only fallback)
+- [Phase 09]: Miniature toggle w-8 h-[18px] for compound/simple in rate table (smaller than DashboardPreferences w-10 h-[22px])
+- [Phase 09]: Master include checkbox cascades to all holdings via separate callback calls
+- [Phase 09]: Allocation sum uses Math.round(sum*100)/100 for floating point precision in 100% comparison
 
 ### Pending Todos
 
@@ -122,6 +126,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T03:04:06Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-03-17T03:13:06Z
+Stopped at: Completed 09-04-PLAN.md
 Resume file: None
