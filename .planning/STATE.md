@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
 status: executing
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-16T22:30:12.240Z"
-last_activity: 2026-03-16 — Completed Plan 08-03 (Frontend Alerts UI)
+stopped_at: Completed 09-03-PLAN.md
+last_updated: "2026-03-17T02:56:13.921Z"
+last_activity: 2026-03-17 — Completed Plan 09-03 (Projection Engine & Chart Components)
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
-  percent: 85
+  total_plans: 18
+  completed_plans: 14
+  percent: 78
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Show the user exactly where all their money is right now, with one glance at a single dashboard.
-**Current focus:** Milestone v1.1 — Phase 8 (Alert System) in progress
+**Current focus:** Milestone v1.1 — Phase 9 (Projection Engine) in progress
 
 ## Current Position
 
-Phase: 8 of 9 (Alert System)
-Plan: 3 of 4 (08-03 complete)
+Phase: 9 of 9 (Projection Engine)
+Plan: 3 of 5 (09-03 complete)
 Status: In Progress
-Last activity: 2026-03-16 — Completed Plan 08-03 (Frontend Alerts UI)
+Last activity: 2026-03-17 — Completed Plan 09-03 (Projection Engine & Chart Components)
 
-Progress: [█████████░] 85% (11/13 plans complete through Phase 8.3)
+Progress: [████████░░] 78% (14/18 plans complete through Phase 9.3)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [█████████░] 85% (11/13 plans complete through Pha
 | Phase 07 P01 | 9min | 2 tasks | 9 files |
 | Phase 08 P01 | 5min | 2 tasks | 12 files |
 | Phase 08 P03 | 5min | 2 tasks | 7 files |
+| Phase 09 P03 | 4min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,9 @@ Recent decisions affecting current work:
 - [Phase 08]: Operand select uses encoded value strings (type:ref:label) for round-trip fidelity
 - [Phase 08]: formatExpressionSummary exported from AlertRuleCard for testability and reuse
 - [Phase 08]: AlertRuleForm loads accounts/groups on mount via getAccounts() for dropdown population
+- [Phase 09]: Compound interest test expectation corrected: plan ~$16386 vs actual $16651.05 (contributions also compound)
+- [Phase 09]: hasHoldings flag prevents double-counting: accounts with holdings skipped in account loop
+- [Phase 09]: Allocation validation suppresses income when sum != 100% (growth-only fallback)
 
 ### Pending Todos
 
@@ -113,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-16T22:30:12.238Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-projection-engine/09-CONTEXT.md
+Last session: 2026-03-17T02:56:13.919Z
+Stopped at: Completed 09-03-PLAN.md
+Resume file: None
