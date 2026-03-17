@@ -73,6 +73,9 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB, jwtSecret string) h
 		r.Post("/api/email/config", handlers.SaveEmailConfig(database, jwtSecret))
 		r.Get("/api/email/config", handlers.GetEmailConfig(database))
 		r.Post("/api/email/test", handlers.TestEmail(database, jwtSecret))
+		r.Get("/api/projections/settings", handlers.GetProjectionSettings(database))
+		r.Put("/api/projections/settings", handlers.SaveProjectionSettings(database))
+		r.Put("/api/projections/income", handlers.SaveIncomeSettings(database))
 	})
 
 	return r
