@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -919,3 +920,249 @@ func TestProcessAccount_DoesNotOverwriteUserColumns(t *testing.T) {
 // TestSyncOnce_SoftDelete_RestoreOrder verifies that restore happens before soft-delete
 // (tested implicitly through TestRestoreReturningAccounts, which verifies an account
 // can be restored and then other accounts soft-deleted in the same sync cycle).
+
+func TestPersistHoldings_InsertsHoldings(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Pre-insert an account for the foreign key.
+	_, err := database.Exec(
+		`INSERT INTO accounts(id, name, account_type, currency) VALUES('acct-invest', 'Brokerage', 'investment', 'USD')`,
+	)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Sync with holdings data.
+	accounts := []map[string]any{
+		{
+			"id": "acct-invest", "name": "Brokerage", "currency": "USD",
+			"balance": "50000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Fidelity", "id": "fidelity"},
+			"holdings": []map[string]any{
+				{
+					"id": "hold-001", "created": 1690000000, "currency": "USD",
+					"cost_basis": "10000.00", "description": "Vanguard S&P 500 ETF",
+					"market_value": "15000.00", "purchase_price": "400.00",
+					"shares": "25", "symbol": "VOO",
+				},
+				{
+					"id": "hold-002", "created": 1695000000, "currency": "USD",
+					"cost_basis": "5000.00", "description": "Apple Inc",
+					"market_value": "8000.00", "purchase_price": "150.00",
+					"shares": "33.33", "symbol": "AAPL",
+				},
+			},
+		},
+	}
+
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
+		t.Fatalf("SyncOnce error: %v", err)
+	}
+
+	// Check holdings were inserted.
+	var holdCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM holdings WHERE account_id='acct-invest'`).Scan(&holdCount); err != nil {
+		t.Fatalf("query holdings: %v", err)
+	}
+	if holdCount != 2 {
+		t.Errorf("expected 2 holdings, got %d", holdCount)
+	}
+
+	// Verify specific holding data.
+	var symbol, description, marketValue, shares, costBasis string
+	if err := database.QueryRow(`SELECT symbol, description, market_value, shares, cost_basis FROM holdings WHERE id='hold-001'`).Scan(
+		&symbol, &description, &marketValue, &shares, &costBasis,
+	); err != nil {
+		t.Fatalf("query holding details: %v", err)
+	}
+	if symbol != "VOO" {
+		t.Errorf("expected symbol VOO, got %s", symbol)
+	}
+	if description != "Vanguard S&P 500 ETF" {
+		t.Errorf("expected description 'Vanguard S&P 500 ETF', got %s", description)
+	}
+	if marketValue != "15000.00" {
+		t.Errorf("expected market_value 15000.00, got %s", marketValue)
+	}
+	if shares != "25" {
+		t.Errorf("expected shares 25, got %s", shares)
+	}
+	if costBasis != "10000.00" {
+		t.Errorf("expected cost_basis 10000.00, got %s", costBasis)
+	}
+}
+
+func TestPersistHoldings_ReplacesStaleHoldings(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// First sync: 2 holdings.
+	accounts := []map[string]any{
+		{
+			"id": "acct-invest", "name": "Brokerage", "currency": "USD",
+			"balance": "50000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Fidelity", "id": "fidelity"},
+			"holdings": []map[string]any{
+				{
+					"id": "hold-001", "created": 1690000000, "currency": "USD",
+					"cost_basis": "10000.00", "description": "VOO ETF",
+					"market_value": "15000.00", "purchase_price": "400.00",
+					"shares": "25", "symbol": "VOO",
+				},
+				{
+					"id": "hold-002", "created": 1695000000, "currency": "USD",
+					"cost_basis": "5000.00", "description": "Apple Inc",
+					"market_value": "8000.00", "purchase_price": "150.00",
+					"shares": "33.33", "symbol": "AAPL",
+				},
+			},
+		},
+	}
+
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
+		t.Fatalf("first SyncOnce error: %v", err)
+	}
+
+	var holdCount int
+	database.QueryRow(`SELECT COUNT(*) FROM holdings WHERE account_id='acct-invest'`).Scan(&holdCount)
+	if holdCount != 2 {
+		t.Fatalf("expected 2 holdings after first sync, got %d", holdCount)
+	}
+
+	// Second sync: hold-002 is gone, hold-001 has updated market_value.
+	accounts2 := []map[string]any{
+		{
+			"id": "acct-invest", "name": "Brokerage", "currency": "USD",
+			"balance": "48000.00", "balance-date": 1700086400,
+			"org": map[string]any{"name": "Fidelity", "id": "fidelity"},
+			"holdings": []map[string]any{
+				{
+					"id": "hold-001", "created": 1690000000, "currency": "USD",
+					"cost_basis": "10000.00", "description": "VOO ETF",
+					"market_value": "16000.00", "purchase_price": "400.00",
+					"shares": "25", "symbol": "VOO",
+				},
+			},
+		},
+	}
+	updatedData, _ := json.Marshal(map[string]any{"errors": []string{}, "accounts": accounts2})
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(updatedData)
+	})
+
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
+		t.Fatalf("second SyncOnce error: %v", err)
+	}
+
+	// Only 1 holding should remain (hold-002 deleted).
+	database.QueryRow(`SELECT COUNT(*) FROM holdings WHERE account_id='acct-invest'`).Scan(&holdCount)
+	if holdCount != 1 {
+		t.Errorf("expected 1 holding after stale cleanup, got %d", holdCount)
+	}
+
+	// Verify hold-001 was updated.
+	var marketValue string
+	database.QueryRow(`SELECT market_value FROM holdings WHERE id='hold-001'`).Scan(&marketValue)
+	if marketValue != "16000.00" {
+		t.Errorf("expected updated market_value 16000.00, got %s", marketValue)
+	}
+
+	// Verify hold-002 is gone.
+	var count int
+	database.QueryRow(`SELECT COUNT(*) FROM holdings WHERE id='hold-002'`).Scan(&count)
+	if count != 0 {
+		t.Errorf("expected hold-002 to be deleted, but found %d rows", count)
+	}
+}
+
+func TestSyncOnce_NoHoldingsForNonInvestment(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Sync a checking account (no holdings expected).
+	accounts := []map[string]any{
+		{
+			"id": "acct-checking", "name": "My Checking", "currency": "USD",
+			"balance": "5000.00", "balance-date": 1700000000,
+			"org": map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
+		t.Fatalf("SyncOnce error: %v", err)
+	}
+
+	// No holdings rows should exist.
+	var holdCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM holdings`).Scan(&holdCount); err != nil {
+		t.Fatalf("query holdings: %v", err)
+	}
+	if holdCount != 0 {
+		t.Errorf("expected 0 holdings for non-investment account, got %d", holdCount)
+	}
+}
+
+func TestSyncOnce_EmptyHoldingsGraceful(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Investment account with empty holdings array.
+	accounts := []map[string]any{
+		{
+			"id": "acct-invest", "name": "Brokerage", "currency": "USD",
+			"balance": "50000.00", "balance-date": 1700000000,
+			"org":      map[string]any{"name": "Fidelity", "id": "fidelity"},
+			"holdings": []map[string]any{},
+		},
+	}
+
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
+		t.Fatalf("SyncOnce error: %v", err)
+	}
+
+	// No holdings rows should exist.
+	var holdCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM holdings`).Scan(&holdCount); err != nil {
+		t.Fatalf("query holdings: %v", err)
+	}
+	if holdCount != 0 {
+		t.Errorf("expected 0 holdings for empty holdings array, got %d", holdCount)
+	}
+}
+
+func TestSyncOnce_UsesWithHoldings(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Verify the sync request does NOT include balances-only=1
+	var capturedQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"errors":[],"accounts":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
+		t.Fatalf("SyncOnce error: %v", err)
+	}
+
+	if strings.Contains(capturedQuery, "balances-only") {
+		t.Errorf("expected SyncOnce to NOT send balances-only (uses FetchAccountsWithHoldings), got query: %s", capturedQuery)
+	}
+}
