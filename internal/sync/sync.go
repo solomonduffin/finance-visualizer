@@ -120,10 +120,10 @@ func SyncOnce(ctx context.Context, db *sql.DB, jwtSecret string) ([]string, erro
 		startDate = &t
 	}
 
-	// Fetch accounts from SimpleFIN.
+	// Fetch accounts from SimpleFIN (with holdings data for investment accounts).
 	// Per the SimpleFIN spec, the /accounts endpoint is at {ACCESS_URL}/accounts.
 	accountsURL := strings.TrimRight(accessURL, "/") + "/accounts"
-	accountSet, err := simplefin.FetchAccounts(accountsURL, startDate)
+	accountSet, err := simplefin.FetchAccountsWithHoldings(accountsURL, startDate)
 	if err != nil {
 		errText := err.Error()
 		finalize(0, 0, &errText)
@@ -142,6 +142,14 @@ func SyncOnce(ctx context.Context, db *sql.DB, jwtSecret string) ([]string, erro
 		}
 		seenIDs = append(seenIDs, acct.ID)
 		fetched++
+
+		// Persist holdings for investment-type accounts with holdings data.
+		acctType := InferAccountType(acct.Name)
+		if acctType == "investment" && len(acct.Holdings) > 0 {
+			if err := persistHoldings(ctx, db, acct.ID, acct.Holdings); err != nil {
+				slog.Warn("sync: persist holdings failed", "account_id", acct.ID, "err", err)
+			}
+		}
 	}
 
 	// Restore and soft-delete in correct order: restore BEFORE soft-delete.
@@ -224,6 +232,35 @@ func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) err
 	}
 
 	return nil
+}
+
+// persistHoldings replaces all holdings for an account with the latest data
+// from SimpleFIN. It deletes existing holdings and inserts the new set within
+// a transaction for atomicity.
+func persistHoldings(ctx context.Context, db *sql.DB, accountID string, holdings []simplefin.Holding) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Delete all existing holdings for this account.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM holdings WHERE account_id = ?`, accountID); err != nil {
+		return fmt.Errorf("delete stale holdings: %w", err)
+	}
+
+	// Insert each holding.
+	for _, h := range holdings {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO holdings (id, account_id, symbol, description, shares, market_value, cost_basis, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+			h.ID, accountID, h.Symbol, h.Description, h.Shares, h.MarketValue, h.CostBasis,
+		); err != nil {
+			return fmt.Errorf("insert holding %q: %w", h.ID, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // softDeleteStaleAccounts sets hidden_at on accounts that were not returned
