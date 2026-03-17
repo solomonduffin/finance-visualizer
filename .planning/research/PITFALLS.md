@@ -1,259 +1,188 @@
 # Pitfalls Research
 
-**Domain:** Adding 7 features to existing Go/React/SQLite personal finance dashboard (v1.1)
-**Researched:** 2026-03-15
-**Confidence:** HIGH (based on direct codebase analysis of all Go handlers, sync logic, schema, and frontend components + domain research with web search verification)
-
----
+**Domain:** Adding features (transactions, spending analytics, investment tracking, data export, goal tracking) to an existing Go/React/SQLite personal finance dashboard with SimpleFIN
+**Researched:** 2026-03-17
+**Confidence:** HIGH (existing codebase examined, SimpleFIN protocol verified, community issues surveyed)
 
 ## Critical Pitfalls
 
-### Pitfall 1: Stale Account Deletion Destroys Renamed Account Data and Configurations
+### Pitfall 1: SimpleFIN Does Not Provide Transactions Today -- the Client Must Be Extended
 
 **What goes wrong:**
-The existing `removeStaleAccounts()` in `internal/sync/sync.go` (lines 198-222) hard-deletes any account not returned by the latest SimpleFIN fetch, including all its `balance_snapshots`. When v1.1 adds user-owned metadata -- display names, APY settings, alert rules, aggregation groups -- a temporary SimpleFIN outage or token refresh causes permanent loss of all that configuration. The account reappears on the next successful sync as a fresh entry with no history, no custom name, no alert rules, and no projection settings.
+The current SimpleFIN client (`internal/simplefin/client.go`) only parses `Account` and `Holding` structs. The SimpleFIN protocol **does** include a `transactions` array on each account (with `id`, `posted`, `amount`, `description`, `pending` fields), but the codebase currently ignores it entirely -- `FetchAccounts` uses `balances-only=1` and `FetchAccountsWithHoldings` only parses holdings, not transactions. Building any transaction-dependent feature (spending analytics, categorization, budgeting, data export with line items) requires extending the client, adding a `Transaction` struct, and modifying the sync pipeline to persist individual transactions.
 
 **Why it happens:**
-The v1.0 design correctly treated SimpleFIN as the sole source of truth for account existence -- accounts had no user-owned state. But v1.1 introduces at least 4 types of user-owned per-account data (display_name, aggregation group membership, APY/growth rate, alert rule references). The existing delete-and-recreate model is incompatible with any user-owned state.
+The v1.0/v1.1 scope was explicitly a balance/net-worth dashboard. The SimpleFIN integration was designed around balance snapshots, not transaction history. It is easy to assume "SimpleFIN gives us everything" when in reality the client only extracts what was needed for the original scope.
 
 **How to avoid:**
-- Replace hard-delete with soft-delete: add a `hidden_at DATETIME` column to `accounts`. When an account disappears from SimpleFIN, set `hidden_at = CURRENT_TIMESTAMP` instead of deleting rows.
-- If a hidden account reappears in SimpleFIN on a subsequent sync, automatically clear `hidden_at` -- the display_name, alert rules, and all history are preserved.
-- Filter hidden accounts from dashboard queries with `WHERE hidden_at IS NULL`, but keep them visible in a "Hidden Accounts" section in settings for manual permanent deletion.
-- Cascade concern: every new table that references `accounts.id` (alert_rules, account_settings, account_groups) must NOT use `ON DELETE CASCADE` with the current hard-delete behavior, or it will silently destroy user config. Soft-delete avoids this entirely.
+- Extend `simplefin.Account` to include a `Transactions []Transaction` field with JSON tag `"transactions"`.
+- Create a `Transaction` struct with fields: `ID string`, `Posted int64`, `Amount string`, `Description string`, `Pending bool`.
+- Add a new fetch mode or modify `FetchAccountsWithHoldings` to also parse transactions (they arrive when `balances-only` is NOT set).
+- Create a `transactions` table in SQLite with a composite unique constraint on `(account_id, external_id)` for idempotent upserts.
+- The sync pipeline must handle transactions as a separate concern from balance snapshots -- they have different cardinality (many transactions per day vs. one balance snapshot per day).
 
 **Warning signs:**
-- Test: disconnect an institution in SimpleFIN Bridge, run sync, reconnect, sync again -- is the display_name intact? Is historical data preserved?
-- If any migration adds `ON DELETE CASCADE` to a foreign key referencing `accounts.id` without first switching to soft-delete, user data is at risk.
+- Any feature spec that says "use transaction data" without mentioning the client extension is incomplete.
+- If the transaction table design discussion is skipped, deduplication will fail.
 
 **Phase to address:**
-Phase 1 (Account Renaming / first migration) -- this must be the very first schema change because every subsequent feature that stores per-account config depends on accounts surviving SimpleFIN volatility.
+The very first phase of v1.2 that touches transactions. This is the foundational prerequisite for spending analytics, categorization, and export.
 
 ---
 
-### Pitfall 2: Expression Evaluation Injection in Alert Rules
+### Pitfall 2: Transaction Deduplication is Harder Than It Looks
 
 **What goes wrong:**
-The alert rules feature needs users to define conditions like `investments > 100000`. If the expression evaluator uses a general-purpose interpreter (e.g., `goja`, `otto`, `expr`, or `govaluate` without restrictions), a crafted expression could access Go runtime internals, read environment variables (which contain `JWT_SECRET`, `PASSWORD_HASH`), or cause denial of service. CVE-2025-68613 (CVSS 9.9) in n8n demonstrates exactly this: expression evaluation that escaped its sandbox led to full RCE with process privileges, affecting 100,000+ instances.
+SimpleFIN provides transaction IDs, but these are institution-dependent and may not be stable. Pending transactions can change ID when they clear. Banks may report the same transaction with slightly different descriptions across fetches. Without robust deduplication, the same transaction appears multiple times, corrupting spending totals and analytics.
+
+Actual Budget's SimpleFIN integration has documented bugs with duplicate transactions ([Issue #2519](https://github.com/actualbudget/actual/issues/2519)) and cross-account mirror transactions from banks like Mercury ([Issue #7015](https://github.com/actualbudget/actual/issues/7015)). Firefly III's integration also suffers from transaction duplication on re-import.
 
 **Why it happens:**
-Developers reach for flexible expression libraries because they want expressive user-facing rules. But this project's alert conditions are structurally simple: compare a balance metric against a numeric threshold. A full expression engine is massive overkill and introduces unnecessary attack surface -- even in a single-user app, the environment contains secrets that should not be exfiltrable.
+Developers treat transaction IDs as globally unique and stable, when in practice: (a) pending-to-cleared transitions can change the ID, (b) some institutions provide non-unique IDs, (c) description text can change between pending and cleared states, and (d) some banks produce mirror transactions across linked accounts (e.g., Mercury creates matching debits/credits).
 
 **How to avoid:**
-- Do NOT import a general-purpose expression engine. Build a restricted DSL with a finite grammar.
-- Valid left-hand operands: panel keys (`liquid`, `savings`, `investments`, `net_worth`) and specific account references by ID.
-- Valid operators: `>`, `<`, `>=`, `<=`, `==`, `!=`.
-- Right-hand side: always a numeric literal.
-- Store as structured JSON in the database: `{"metric": "investments", "operator": ">", "value": 100000}`. Never store free-text expression strings.
-- Evaluate by looking up the current value from the database, then doing a `shopspring/decimal` comparison. No interpreter or `eval()` needed.
-- On the frontend, use a structured form (dropdown for metric, dropdown for operator, numeric input for value) that generates the JSON. Never accept free-text expressions.
+- Use SimpleFIN's transaction `id` as `external_id` with a `UNIQUE(account_id, external_id)` constraint for primary dedup.
+- Implement a secondary fuzzy-match layer: same account, same date (+/-1 day), same amount, similar description -- to catch pending-to-cleared transitions where the ID changes.
+- Store a `pending` boolean and update (not duplicate) when a pending transaction clears.
+- Handle pending-to-cleared as an UPDATE, not INSERT: match on amount + date proximity, then update the `external_id`, `description`, and `pending` flag.
+- Add a `dedup_hash` column (SHA256 of account_id + amount + date) as a fallback matching key.
 
 **Warning signs:**
-- If the codebase imports `goja`, `otto`, or any JavaScript runtime for alert evaluation, it is overengineered.
-- If the alert expression is passed to any `Eval()` function, there is an injection vector.
+- Spending totals that seem "too high" after a sync cycle.
+- Transaction count grows faster than expected.
+- Users see the same purchase listed twice with slight description variations.
 
 **Phase to address:**
-Phase 5 (Alert Rules) -- the expression storage format must be decided at schema design time, before any alert data is persisted.
+Must be solved in the transaction storage phase, before any analytics are built on top. If dedup is bolted on later, existing bad data requires a cleanup migration.
 
 ---
 
-### Pitfall 3: Alert Flooding from Threshold Oscillation
+### Pitfall 3: SimpleFIN's 90-Day Window and Daily Rate Limit Constrain Historical Data
 
 **What goes wrong:**
-A checking balance that hovers around a $5,000 alert threshold (oscillating between $4,900 and $5,100 due to pending transactions) triggers an email on every sync cycle where the condition is true. With daily sync, that is a daily email. If the user triggers manual syncs, it gets worse. The user either disables alerts entirely or ignores them (alert fatigue), defeating the feature's purpose.
+SimpleFIN limits date range queries to 90 days maximum, and the number of historical days actually available varies per institution. Additionally, the protocol enforces 24 requests per day. This means: (a) you cannot backfill years of transaction history for analytics, (b) if you miss syncing for > 90 days, that gap is permanent, (c) if you burn through the rate limit with aggressive syncing, your access token gets disabled.
 
 **Why it happens:**
-Naive threshold checking (`if currentValue > threshold then sendEmail`) has no memory of prior state. Every evaluation is independent, so the system cannot distinguish "just crossed the threshold" from "still above the threshold from yesterday."
+Feature designers imagine "show spending for the last year" without realizing the data source can only look back 90 days. The existing codebase already handles this for balances (first sync = 30 days back), but transactions have a different profile -- you need every transaction, not just a point-in-time balance.
 
 **How to avoid:**
-- Implement a state machine per alert rule with three states: `NORMAL`, `TRIGGERED`, `NOTIFIED`.
-  - `NORMAL` -> condition becomes true -> send "threshold crossed" email -> transition to `NOTIFIED`.
-  - `NOTIFIED` -> condition still true -> do nothing (no repeat emails).
-  - `NOTIFIED` -> condition becomes false -> send "recovered" email -> transition to `NORMAL`.
-- This exactly matches the "fire once on cross, once on recovery" requirement in PROJECT.md.
-- Store the current state in an `alert_state TEXT DEFAULT 'NORMAL'` column on the alert rules table.
-- Add `last_notified_at DATETIME` and enforce a minimum cooldown (e.g., 1 hour) as a safety net.
-- Edge case: do NOT send a recovery email if the alert has never fired. Initial state should be determined by evaluating the condition once without sending, to establish the baseline.
+- Design all analytics features to work with "data available since first transaction sync" rather than assuming arbitrary history depth.
+- Show clear date range indicators in the UI: "Spending data available since [first transaction date]."
+- Start syncing transactions immediately so the rolling window accumulates -- every day of delay is a day of lost history.
+- Never request more than 90 days in a single fetch. On first transaction sync, request 90 days (the max), then daily incremental syncs going forward.
+- Stay well under the 24-request daily limit. The current daily cron approach (1 request/day) is correct. Do not add "sync now" spam for transactions.
+- Consider a manual CSV/OFX import feature as a one-time backfill option for historical data that predates SimpleFIN enrollment.
 
 **Warning signs:**
-- If the alert evaluation code does not read the previous alert state before deciding whether to send, it will flood.
-- Test: set threshold exactly at current balance, run sync twice -- must NOT send two emails.
+- Feature specs referencing "all-time" analytics without acknowledging the data gap.
+- Users clicking "Sync Now" repeatedly, hitting rate limits.
+- Analytics pages showing empty or misleading data for the first 90 days of operation.
 
 **Phase to address:**
-Phase 5 (Alert Rules) -- the state machine must be part of the initial alert schema, not retrofitted after users complain about flooding.
+Transaction sync phase (earliest v1.2 phase) should document this limitation prominently. Analytics UI phases should include empty-state handling for insufficient data.
 
 ---
 
-### Pitfall 4: Sync Error Messages Leaking SimpleFIN Credentials to Frontend
+### Pitfall 4: Transaction Categorization Accuracy Ceiling Without User Feedback Loop
 
 **What goes wrong:**
-The sync diagnostics feature will expose `sync_log.error_text` in the settings UI. The existing `SyncOnce()` stores raw error messages from Go's error wrapping chain. While `client.go` (lines 108-109) correctly strips credentials from the request URL before making HTTP calls, the raw access URL is read from the settings table at sync.go line 72-77, and error paths could include it. For example, a database error during the settings read, or an error message from `url.Parse()` that includes the full URL with credentials, would end up in `sync_log.error_text` and then displayed in the browser.
+Automated transaction categorization based on description text achieves 70-85% accuracy at best. SimpleFIN descriptions are institution-dependent -- some banks provide "AMZN MKTP US*ABC123", others provide "AMAZON.COM". Without a mechanism for the user to correct miscategorizations and have those corrections persist and improve future classifications, spending analytics will always feel "wrong."
 
 **Why it happens:**
-Go's `fmt.Errorf("context: %w", err)` preserves the full error chain. Any error that includes the access URL (which contains embedded `user:password@host` Basic Auth) in its string representation will propagate credentials into the sync log. The current code does not sanitize errors before storage.
+Developers build a keyword-matching or rule-based categorizer, test it against their own transactions, and declare it done. But descriptions vary wildly across institutions, and edge cases accumulate: a gas station that also sells groceries, a payment app (Venmo/Zelle) that hides the actual merchant, Amazon purchases spanning multiple categories.
 
 **How to avoid:**
-- Write a `sanitizeError(msg string) string` function that strips URL credentials: replace patterns matching `https?://[^@]+@` with `https://***@`.
-- Apply this sanitization in the `finalize()` helper (sync.go line 96-104) before writing to `sync_log.error_text`.
-- In the new sync diagnostics API endpoint, return structured error categories ("Connection failed", "Authentication failed", "Data parse error") rather than raw error text. Map common error patterns to user-friendly messages server-side.
-- Audit every `fmt.Errorf` and `slog` call in `sync.go` and `client.go` to ensure `accessURL` never appears in error messages.
+- Start with simple keyword-based rules (not ML) for a single-user app. This is sufficient and maintainable.
+- Store both `auto_category` and `user_category` on each transaction. Display `COALESCE(user_category, auto_category)` -- following the same pattern as `COALESCE(display_name, name)` already used for accounts.
+- Build a "recategorize all matching" feature: when the user corrects "AMZN MKTP" from "Other" to "Shopping", offer to apply that rule to all past and future matching transactions.
+- Store user-created rules in a `category_rules` table (pattern, category) that take priority over built-in rules.
+- DO NOT attempt ML-based categorization for a single-user self-hosted app. The training data is too small, the complexity is too high, and keyword rules with user overrides will outperform ML at this scale.
 
 **Warning signs:**
-- Search: any `slog.Error` or `fmt.Errorf` that includes `accessURL` as a value.
-- Test: set an intentionally broken SimpleFIN URL with credentials, trigger sync, check what `sync_log.error_text` contains.
+- "Uncategorized" being the largest spending category.
+- User spending hours manually correcting categories.
+- Category pie charts that do not match the user's mental model of their spending.
 
 **Phase to address:**
-Phase 4 (Sync Diagnostics) -- must be solved before any sync_log data is exposed to the frontend.
+Spending analytics phase. Categorization is the core of analytics -- it must be built before any charts or reports.
 
 ---
 
-### Pitfall 5: Crypto Aggregation Incorrectly Merges Non-Crypto Accounts at Same Institution
+### Pitfall 5: Investment Performance Calculation Without Contribution Tracking
 
 **What goes wrong:**
-The crypto aggregation feature groups accounts by `org_name` to sum sub-accounts (e.g., 4 Coinbase wallets -> 1 line). But `org_name` is the institution name, not the account type. A user with a Coinbase crypto wallet AND a Coinbase USD checking account (Coinbase offers banking services) sees them incorrectly merged into one aggregated balance.
+The existing holdings table stores `market_value`, `shares`, and `cost_basis`, but these are point-in-time snapshots from SimpleFIN. To calculate meaningful investment performance (returns vs. contributions), you need to track when money was added vs. when it grew. Without this, a 20% balance increase could mean "great returns" or "you deposited more money."
+
+SimpleFIN does not provide contribution/withdrawal history for investment accounts -- it only provides current holdings state. The balance_snapshots table records daily balances, but cannot distinguish between growth and cash flow.
 
 **Why it happens:**
-The aggregation logic treats `org_name` as a proxy for "accounts that should be grouped." But `org_name` identifies the institution, not the product. The existing `InferAccountType()` already classifies accounts into `checking`, `savings`, `credit`, `investment`, `other` -- but a naive `GROUP BY org_name` ignores this.
+Balance change is conflated with return. The existing projection engine assumes a static balance growing at a configured APY, which is fine for projections but wrong for retrospective performance measurement.
 
 **How to avoid:**
-- Aggregation must respect `account_type` boundaries: group by `(org_slug, account_type)`, not just `org_name` or `org_slug`.
-- Make aggregation opt-in, not automatic. Provide a UI in settings where the user explicitly selects which accounts to aggregate into a group. Store groups as a dedicated `account_groups` table with member account IDs.
-- Display the aggregated line with sub-account count: "Coinbase (4 wallets)" so the user can verify correctness.
-- If automatic grouping is desired as a default, present it as a suggestion that the user confirms, not a fait accompli.
+- Accept that SimpleFIN-only investment performance tracking will be approximate, not precise.
+- Use the simple approach: track balance changes day-over-day from `balance_snapshots`. Large single-day jumps (> threshold, e.g., 5% of balance) are likely contributions/withdrawals, not market movement. Flag these for user confirmation.
+- Allow manual entry of contributions/withdrawals for investment accounts. Store in a `investment_cash_flows` table.
+- Calculate Time-Weighted Return (TWR) when cash flows are known, Simple Return when they are not. Display which method is being used.
+- Do NOT display a percentage return without clearly labeling whether it accounts for contributions. "Balance growth: +15%" is honest. "Return: +15%" when half was contributions is misleading.
 
 **Warning signs:**
-- If the aggregation SQL is `GROUP BY org_name` without also considering `account_type`, it is wrong.
-- Test: create test data with two accounts at the same org but different types (e.g., "Coinbase" investment + "Coinbase" checking) -- verify they are NOT merged.
+- Investment "returns" that seem unrealistically high (because they include contributions).
+- User confusion about why their "return" does not match their brokerage statement.
+- Charts showing investment growth that look like step functions (contribution events) instead of curves (market movement).
 
 **Phase to address:**
-Phase 1 (Crypto Aggregation) -- the grouping logic must be correct from the start since it directly affects how balances display on the dashboard.
+Investment tracking phase. This requires explicit design decisions upfront -- retrofitting contribution tracking onto a balance-only system is painful.
 
 ---
 
-### Pitfall 6: org_name Instability Breaking Aggregation Groups Over Time
+### Pitfall 6: Corrupting the Balance Snapshot Model When Adding Transaction Sums
 
 **What goes wrong:**
-SimpleFIN's `org.name` is a human-readable string that can change between syncs. If SimpleFIN Bridge updates how it labels an institution (e.g., "Coinbase" becomes "Coinbase, Inc." or "Coinbase Global"), aggregation grouping based on `org_name` silently breaks: previously aggregated accounts split into two groups, or one group disappears and another appears.
-
-The existing `processAccount()` upsert (sync.go lines 169-179) overwrites `org_name` on every sync via `ON CONFLICT(id) DO UPDATE SET org_name=excluded.org_name`, so the change propagates immediately.
+Once transactions exist, there is a temptation to calculate balances by summing transactions instead of using SimpleFIN's reported balance. These numbers WILL NOT match. SimpleFIN's balance is the bank's authoritative number. Transaction sums will be wrong because: (a) you do not have complete history, (b) pending transactions may be included/excluded differently, (c) some transactions (fees, interest) may not appear in the transaction list, and (d) rounding differences accumulate.
 
 **Why it happens:**
-`org.name` is a display label, not a stable identifier. The SimpleFIN protocol also provides `org.id` (stored as `org_slug` in the current schema), which is a domain-like identifier (e.g., `coinbase.com`) that is more stable. Developers naturally reach for the human-readable name for grouping because it is what the user sees.
+Developers reason: "We have all transactions, so we can derive the balance." This is the classic double-entry bookkeeping assumption, but it requires COMPLETE transaction history from account inception, which SimpleFIN cannot provide.
 
 **How to avoid:**
-- Use `org_slug` (the `org.id` / domain from SimpleFIN) as the grouping key in all aggregation logic. Use the latest `org_name` as the display label.
-- Store aggregation group configuration keyed by `org_slug`, not `org_name`.
-- Handle NULL `org_slug`: the SimpleFIN protocol allows null org domain. If `org_slug IS NULL`, fall back to `org_name` but log a warning. The Actual Budget project encountered this exact issue (PR #2836) and had to add null-domain handling.
+- Treat SimpleFIN's reported balance as the single source of truth for account balances. Never override it with a transaction sum.
+- Transaction data is for categorization, analytics, and drill-down -- NOT for balance calculation.
+- If displaying "transactions for this period," show them alongside the authoritative balance, not as a replacement.
+- Document this separation clearly in code: balance_snapshots (authoritative) vs. transactions (supplementary).
+- Add a reconciliation check: if SUM(transactions for day) differs significantly from balance delta, log a warning but do NOT "fix" the balance.
 
 **Warning signs:**
-- If aggregation SQL or Go code uses `GROUP BY org_name` anywhere, it is fragile.
-- Test: manually change an account's `org_name` in the database (simulate a SimpleFIN label change), run sync -- does the aggregation group survive?
+- Balance on dashboard differs from balance on bank website.
+- "Reconciliation errors" appearing after adding transaction support.
+- Developer instinct to "recalculate" balances from transactions.
 
 **Phase to address:**
-Phase 1 (Crypto Aggregation) -- the choice of grouping key is foundational and cannot be changed later without migrating user configuration.
+Transaction storage phase -- establish this principle in the schema design and document it in code comments before any analytics work begins.
 
 ---
 
-### Pitfall 7: Financial Projections Using float64 Instead of shopspring/decimal
+### Pitfall 7: Schema Migration Coupling Breaks Existing Users on Upgrade
 
 **What goes wrong:**
-Compound interest calculation involves repeated multiplication: `balance * (1 + rate/periods)^(periods*years)`. If done with `float64`, IEEE 754 rounding errors accumulate over long projection horizons. A 30-year projection at 7% APY on $100,000 can be off by hundreds of dollars. The user sees a specific dollar amount and trusts it for financial planning.
+The existing app has 6 migrations and real user data. Adding transactions, categories, goals, etc. will require 5-10+ new migrations. If a migration fails mid-way (e.g., adding a foreign key to a table that has orphaned rows, or an ALTER TABLE that SQLite does not support), the database is left in a partially-migrated state. SQLite's limited ALTER TABLE support (no DROP COLUMN before 3.35.0, no RENAME COLUMN before 3.25.0) makes complex schema changes risky.
 
 **Why it happens:**
-Go's `math.Pow()` only works with `float64`. `shopspring/decimal` does not have a built-in `Pow()` for fractional exponents. The temptation is to convert to float64, do the exponentiation, and convert back. The project already uses `shopspring/decimal` everywhere else (sync.go, handlers), so the inconsistency may not be noticed.
+Developers test migrations against empty databases or freshly-seeded test data, but production databases have edge cases: soft-deleted accounts with no corresponding balance_snapshots, orphaned group_members from deleted accounts, NULL values in columns that a new migration assumes are NOT NULL.
 
 **How to avoid:**
-- Use iterative compounding with `shopspring/decimal`: loop through each compounding period, multiplying by `(1 + rate/periods)` using `decimal.Mul()` and `decimal.Div()`. This avoids `math.Pow()` entirely.
-- For monthly compounding over 30 years, that is 360 iterations -- trivially fast, not a performance concern.
-- Store APY/growth rates as `TEXT` in the database (matching how balances are stored), not as `REAL`. Parse with `decimal.NewFromString()`.
-- Always display projections with a visual and textual disclaimer: "Projected values are estimates."
-- JSON serialization: when returning decimal projection values to the frontend, use `decimal.StringFixed(2)` as already done in `summary.go`, not `MarshalJSON()` which can lose precision with large numbers.
+- Always test migrations against a copy of the actual production database, not just test fixtures.
+- Use `CREATE TABLE IF NOT EXISTS` for new tables (already the pattern in this codebase -- good).
+- Avoid ALTER TABLE for anything beyond ADD COLUMN. If you need to change a column type or constraint, use the SQLite 12-step table rebuild pattern wrapped in a transaction.
+- Each migration must be independently reversible. Write down migrations even if you think you will not need them.
+- Add a pre-migration backup step to the startup sequence: copy `finance.db` to `finance.db.backup-{migration_version}` before running new migrations.
+- Keep migrations small and focused. One table per migration, not "add all transaction tables in one migration."
 
 **Warning signs:**
-- Any import of `math` (except `math.Min`/`math.Max` for clamping) in projection code is suspicious.
-- Any `float64` cast or `.InexactFloat64()` call in financial calculation code is a bug.
-- Test: project $100,000 at 7% APY for 30 years monthly compounding. Correct answer: $761,225.50. If the result differs by more than $0.01, the implementation is wrong.
+- Migrations that reference existing table data with assumptions about its state.
+- ALTER TABLE statements that do anything other than ADD COLUMN.
+- No down migration files for new up migrations.
 
 **Phase to address:**
-Phase 6 (Financial Projections) -- must be correct from day one since users make financial decisions based on these numbers.
-
----
-
-### Pitfall 8: Growth Indicators Misleading with Division by Zero and Small Balances
-
-**What goes wrong:**
-Growth rate calculation (`(current - previous) / previous * 100`) produces three failure modes:
-1. **Division by zero:** Previous balance is $0 (new account, or account was at zero). Result is infinity or NaN, which renders as "Infinity%" or crashes the frontend.
-2. **Misleading percentages:** A $1 account growing to $10,001 shows "+1,000,000%" -- technically correct but meaningless for a freshly funded account.
-3. **Insufficient history:** An account with only one snapshot has no previous balance to compare against. The `UNIQUE(account_id, balance_date)` constraint means the account might have a snapshot, but only for today.
-
-**Why it happens:**
-Percentage change is a ratio that breaks at boundary values. Developers test with "normal" balances ($50,000 -> $51,000 = +2%) and miss the edges. The existing `balance_snapshots` table uses `INSERT OR IGNORE` which means the first sync creates only one snapshot per account -- there is no "previous" value to compare against until the next day's sync.
-
-**How to avoid:**
-- Guard division by zero: if previous balance is zero, display "New" or show the absolute dollar change instead of a percentage.
-- Set a minimum previous-balance threshold (e.g., $100) below which percentage display is suppressed. Show dollar change instead.
-- Require at least 2 snapshots on different dates before showing any growth indicator. Query: `SELECT COUNT(DISTINCT balance_date) FROM balance_snapshots WHERE account_id = ?` must be >= 2.
-- Use `shopspring/decimal` for the calculation (already in the project). The growth calculation should be `current.Sub(previous).Div(previous).Mul(decimal.NewFromInt(100))`. Do NOT convert to float64.
-- Cap displayed percentage at a reasonable bound (e.g., +/- 999%) to prevent layout-breaking values.
-
-**Warning signs:**
-- Any `float64` cast in growth calculation code is a bug.
-- Test: account with previous balance $0, current balance $500 -- should show "New" or "$500.00", not "Inf%".
-- Test: account with only 1 snapshot -- should show nothing or "Tracking...".
-- Test: credit card with negative balance -- percentage calculation must handle negative previous values correctly (going from -$500 to -$200 is improvement, not "60% loss").
-
-**Phase to address:**
-Phase 2 (Growth Indicators) -- edge cases must be handled in the initial implementation.
-
----
-
-### Pitfall 9: SQLite Migrations Failing on Existing v1.0 Data
-
-**What goes wrong:**
-v1.1 needs multiple new columns and tables. SQLite does not support `ALTER TABLE ... ALTER COLUMN` or `DROP COLUMN` (the project uses modernc.org/sqlite). A migration that adds a `NOT NULL` column without a `DEFAULT` value will fail on tables that already have rows. `golang-migrate` wraps each SQLite migration in an implicit transaction; a failed migration marks the schema version as "dirty," and all subsequent migrations refuse to run. The application fails to start.
-
-**Why it happens:**
-Developers write migrations that pass on empty test databases (created fresh in `db_test.go`) but fail on production databases with existing data. The v1.0 `000001_init.up.sql` created tables from scratch -- there was no existing data to worry about. v1.1 migrations operate on populated tables for the first time.
-
-**How to avoid:**
-- Every `ALTER TABLE ... ADD COLUMN` must have a `DEFAULT` value. Even if the intent is NOT NULL, add the column as nullable first, backfill data, then (if absolutely needed) rebuild the table with the constraint.
-- Keep migrations small: one concern per file (`000002_add_display_name.up.sql`, `000003_add_hidden_at.up.sql`, etc.).
-- Always write corresponding `.down.sql` files. For `ADD COLUMN` on SQLite, the down migration requires the table-rebuild pattern: `CREATE TABLE new_table ...`, `INSERT INTO new_table SELECT ... FROM old_table`, `DROP TABLE old_table`, `ALTER TABLE new_table RENAME TO old_table`.
-- NEVER put explicit `BEGIN`/`COMMIT` in migration files -- golang-migrate wraps them automatically for SQLite.
-- Add a migration integration test that runs all migrations against a database seeded with v1.0 realistic data (a few accounts, ~30 balance_snapshots, some sync_log entries).
-
-**Warning signs:**
-- A migration file containing `ALTER TABLE ... ALTER COLUMN` -- will fail on SQLite.
-- A migration adding a column with `NOT NULL` and no `DEFAULT` -- will fail on non-empty tables.
-- `db_test.go` only tests migrations on `:memory:` with no seed data.
-
-**Phase to address:**
-Phase 1 (first migration) -- establish the migration discipline that all subsequent phases follow.
-
----
-
-### Pitfall 10: SMTP Credentials Exposed Through API Responses or Logs
-
-**What goes wrong:**
-The existing `settings` table stores key-value pairs as plaintext. The `GET /api/settings` handler already returns sync status. When SMTP config is added, the natural pattern is to store `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass` in the same table and return them in the same API response. This exposes the SMTP password to the browser, visible in DevTools Network tab, and potentially cached in browser history.
-
-Additionally, Go's `slog` structured logging will include SMTP credentials in log output if they are passed as field values during connection attempts. Docker logs (`docker logs backend`) persist these indefinitely.
-
-**Why it happens:**
-The settings table pattern from v1.0 makes it easy to add new key-value pairs. The SimpleFIN access URL is already stored in plaintext there -- so there is precedent. But SMTP passwords are often reused credentials (unlike the SimpleFIN token), making exposure more damaging.
-
-**How to avoid:**
-- Preferred approach: store SMTP config as environment variables (matching `JWT_SECRET` and `PASSWORD_HASH` pattern). Add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` to `internal/config/config.go`. Pass via `docker-compose.prod.yml`.
-- If database storage is needed for UI configurability: store SMTP password as a separate settings key that is NEVER returned in `GET /api/settings`. Return `smtp_configured: true/false` and `smtp_host: "smtp.example.com"` but never the password. The update endpoint accepts the password but the read endpoint masks it.
-- Never pass SMTP password to `slog`. Log `smtp_host`, `smtp_port`, `smtp_user` for debugging, but mask the password field.
-
-**Warning signs:**
-- If `GET /api/settings` response JSON contains an `smtp_password` or `smtp_pass` field, it is a security bug.
-- If any `slog.Info` or `slog.Error` call includes `"password"` as a key, it is a security bug.
-
-**Phase to address:**
-Phase 5 (Alert Rules / Email Setup) -- SMTP credential handling must be designed before the alert email feature is built.
+Every phase that touches the database. But the transaction storage phase is the highest risk because it adds the most schema surface area.
 
 ---
 
@@ -261,108 +190,108 @@ Phase 5 (Alert Rules / Email Setup) -- SMTP credential handling must be designed
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Storing alert expressions as free-text strings instead of structured JSON | More flexible, easier to extend syntax later | Must parse on every evaluation; validation harder; schema evolution painful; injection risk | Never -- use structured JSON from day one |
-| Storing SMTP credentials in the settings table (plaintext) | Quick to implement, matches SimpleFIN URL pattern | Credentials visible to filesystem access; exposed if API endpoint returns them | Acceptable for v1.1 if the API never returns the password and env var alternative is documented |
-| Hard-coding panel keys (`liquid`, `savings`, `investments`) in both Go handlers and TypeScript types | Simple, no dynamic config needed | Every new panel requires changes in 5+ files (accounts.go, summary.go, history.go, client.ts, Dashboard.tsx, PanelCard.tsx) | Acceptable -- panel types are unlikely to change for a personal finance dashboard |
-| Using `SetMaxOpenConns(1)` for all operations | Prevents "database is locked" entirely | Alert evaluation + sync + API reads all serialize; alert evaluation during sync blocks API responses | Acceptable now (single user, sub-second queries) but becomes a bottleneck if alert evaluation or projection calculation is slow. Revisit if API response times exceed 200ms |
-| Computing growth indicators on every API request instead of caching | No cache invalidation logic needed | Growth calc runs on every dashboard load; involves 2 snapshot queries per account | Acceptable for single user with <20 accounts. Cache only if profiling shows it matters |
+| Storing transaction amounts as TEXT (like balances) | Consistency with existing pattern, shopspring/decimal compatible | Slightly harder to query with SQL aggregates, must parse in Go | Always -- this is correct for financial data. Never use REAL for money. |
+| Keyword-only categorization (no ML) | Simple, deterministic, debuggable | Will not adapt to new merchants automatically | Always for single-user self-hosted. ML is overkill. |
+| Client-side spending chart calculations | No server round-trips, responsive UI | Large transaction volumes could slow the browser | Acceptable up to ~10K transactions per query. Add server-side aggregation if needed later. |
+| Skipping OFX/QFX import in v1.2 | Faster delivery, fewer format parsers to maintain | Users cannot backfill history from before SimpleFIN enrollment | Acceptable for v1.2, add in v1.3 if users request it |
+| Storing categories as flat strings instead of a hierarchy | Simple schema, easy to query | Cannot do "Food > Restaurants > Fast Food" drill-down | Acceptable for MVP. Migrate to hierarchical later if needed. |
+| Using `TEXT` for dates in SQLite | Consistent with existing schema pattern | DATE comparison requires careful formatting (ISO 8601) | Always for this project -- already the established pattern and working correctly. |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| SimpleFIN + Account Renaming | Overwriting display_name on sync because the upsert updates `name` from SimpleFIN every time | Two separate columns: `name` (SimpleFIN-managed, always updated by sync upsert) and `display_name` (user-managed, never touched by sync). Display logic everywhere: `COALESCE(display_name, name)` |
-| SimpleFIN + Stale Account Cleanup | Hard-deleting accounts that temporarily disappear, destroying display_name, alert rules, APY settings | Soft-delete with `hidden_at` timestamp. Auto-restore when account reappears. Manual "permanently delete" in settings |
-| SimpleFIN + Aggregation Grouping | Using `org_name` (human-readable, can change) as the grouping key | Use `org_slug` (domain-like, stable) as grouping key. Display `org_name` as label. Handle NULL `org_slug` with fallback |
-| Alert Emails + Sync Cycle | Evaluating alerts and sending emails inside the sync transaction / mutex, blocking dashboard API | Evaluate alerts AFTER sync completes and mutex is released. Collect all alerts to fire, then send emails asynchronously in a goroutine. If SMTP times out, sync data is already committed |
-| Docker + SMTP | Hardcoding SMTP config in docker-compose, requiring rebuild to change | Pass as environment variables in `docker-compose.prod.yml`, matching the existing pattern for `JWT_SECRET` and `PASSWORD_HASH` |
-| Net Worth Drill-Down + Balance History | Reusing the existing `GET /api/balance-history` endpoint which returns panel-grouped data, not per-account data | The drill-down needs per-account time series, not just panel totals. Create a new endpoint that returns individual account histories with the account's display_name |
-| Growth Indicators + Credit Cards | Applying percentage change to credit card balances without considering sign semantics | Credit card balances are already negative in the database. Going from -$500 to -$200 is a $300 improvement, but naive `(current-previous)/previous*100` gives `-60%`. Use absolute value of previous for the denominator, or display "Paid down $300" instead of a percentage |
+| SimpleFIN transactions | Assuming transaction IDs are globally stable across pending-to-cleared transitions | Use `UNIQUE(account_id, external_id)` with a secondary fuzzy matcher for pending-to-cleared updates |
+| SimpleFIN transactions | Fetching with `balances-only=1` (current behavior) and expecting transactions | Must use `balances-only=0` or omit the parameter entirely; the current `FetchAccountsWithHoldings` already does this but the `Account` struct lacks a `Transactions` field |
+| SimpleFIN rate limits | Hitting the API multiple times per day for different data (balances, transactions, holdings) | Consolidate into a SINGLE daily fetch with `balances-only=0`. Parse balances, holdings, AND transactions from one response. |
+| SimpleFIN date ranges | Requesting >90 days of history | Cap `start-date` to `now - 90 days`. For initial backfill, use the full 90-day window once. |
+| SQLite concurrent writes | Adding transaction writes to the sync pipeline without considering WAL locking | Keep using WAL mode. Wrap the entire sync cycle (balances + transactions) in a single SQL transaction to avoid partial writes. |
+| shopspring/decimal division | Dividing by zero panics (not returns error) | Always guard `decimal.Div()` with `IsZero()` check. Relevant for percentage calculations in spending analytics. |
+| shopspring/decimal formatting | Using `.String()` for display, which produces variable decimal places | Use `.StringFixed(2)` for currency display. The existing codebase stores raw decimal strings, which is correct for storage but needs formatting for UI. |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Net worth drill-down loading all snapshots for all accounts into the browser | Browser freezes rendering thousands of data points in Recharts | Server-side aggregation: accept a `resolution` parameter (`daily`, `weekly`, `monthly`). Return weekly averages for ranges > 90 days, monthly for > 1 year | At ~1000 data points per series. Recharts handles ~500 smoothly |
-| Correlated subquery for "latest balance" repeated in every new handler | Each new endpoint (growth, alerts, projections) re-queries the same data pattern | Extract a shared `latestBalances(ctx, db)` Go function used by summary, accounts, growth, and alert evaluation. The existing `idx_balance_snapshots_account_date` index covers it | Not a real performance issue at this scale, but a maintainability issue with copy-pasted queries |
-| Alert evaluation querying the database once per rule per sync | N+1 query pattern if evaluating 20 rules individually | Batch: read all current balances once (reuse `latestBalances()`), compute all panel totals once, then evaluate all rules against that snapshot in-memory | Not a performance concern for <50 rules, but the batch pattern is simpler code anyway |
-| Projection calculation done on every page load with no caching | Noticeable delay on the projection tab, especially for long horizons with many accounts | Cache projections and invalidate when: (a) a sync updates balances, (b) user changes APY/growth settings. For v1.1, recalculating on each load is acceptable -- 360 iterations per account is microseconds | Never at this scale |
+| Loading all transactions into browser for client-side analytics | Page load > 3 seconds, browser memory spike | Server-side aggregation endpoints (e.g., `/api/spending/summary?period=monthly`). Send summaries, not raw transactions. | > 5K transactions (roughly 6 months of active use for a single user) |
+| Unindexed transaction queries by date range | Slow spending analytics queries | Add `CREATE INDEX idx_transactions_date ON transactions(account_id, posted_date)` | > 10K transactions |
+| Recalculating spending categories on every page load | Redundant processing, slow analytics page | Cache category assignments on the transaction row. Only recategorize when rules change (bulk update). | > 2K transactions |
+| Single large SQL transaction for bulk transaction import | WAL checkpoint starvation during initial 90-day backfill | Batch inserts in groups of 100-500 rows per SQL transaction | > 1K transactions in a single sync |
+| Fetching full transaction detail for list views | Slow API responses, excessive data transfer | Paginate transaction list endpoints. Default 50 per page with cursor-based pagination. | > 500 transactions per account |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Returning raw `sync_log.error_text` to frontend without sanitization | Error messages may contain SimpleFIN access URL with embedded Basic Auth credentials | Sanitize errors before storage: strip URL credentials. Return error categories in API, not raw text |
-| Storing SMTP password in settings table and returning it in `GET /api/settings` | SMTP password exposed to authenticated browser sessions via DevTools | Never return SMTP password in API responses. Return `smtp_configured: true/false` only |
-| Alert rule expressions evaluated with a general-purpose engine | Expression injection leads to env var access (JWT_SECRET, PASSWORD_HASH, SMTP credentials) | Restricted DSL with structured JSON. No `eval()`. No JavaScript runtime |
-| Logging SMTP credentials in slog during email send attempts | Credentials appear in Docker logs, persisted indefinitely | Log `smtp_host` and `smtp_user` but always mask password. Never pass password to slog fields |
-| Email alert subject line containing account balances | Financial data exposed in email notifications, lock screens, forwarded messages | Subject: "Finance Alert: Threshold Crossed." Balance details in body only |
-| Alert rule referencing a deleted/hidden account continues to fire with stale data | Phantom alerts based on the last known balance of an account that no longer exists | Skip evaluation for alert rules that reference hidden/deleted accounts. Mark such rules as "paused" in the UI |
+| Exposing raw SimpleFIN transaction descriptions in exports | Descriptions may contain account numbers, reference codes, or PII from bank metadata | Sanitize or let user review before export. Never include raw `extra` field data from SimpleFIN. |
+| Storing export files in a web-accessible directory | Anyone with the URL can download financial data | Generate exports in a temp directory, serve via authenticated endpoint, delete after download or expiry (e.g., 1 hour). |
+| Including SimpleFIN access URL or credentials in data exports | Full account access leaked if export file is shared | Explicitly exclude `settings` table data from any export functionality. |
+| Not rate-limiting export endpoints | Denial of service via repeated large export generation | Apply the same rate limiting pattern used for `/api/auth/login` (httprate middleware). |
+| Category rules revealing spending patterns if app is accessed | Attacker learns user's merchant relationships | The existing JWT auth protects this, but ensure new endpoints follow the same `jwtauth.Authenticator` middleware pattern in the router group. |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Growth indicators on accounts with <7 days of history | User sees "+5,000%" on a newly synced account due to small initial balance | Require minimum 7 days of history AND previous balance > $100. Show "Tracking..." badge otherwise |
-| Projection page showing exact dollar amounts without disclaimers | User treats projections as financial promises | Show projections with explicit "Estimates based on assumed growth rates" disclaimer. Use dashed/muted line styling for projected portions of charts |
-| Account renaming not reflected in all UI surfaces | User renames "Personal Checking" to "Main Account" but old name appears in chart tooltips, alert displays, or projection settings | Use `COALESCE(display_name, name)` in EVERY query that returns account names. Create a shared Go helper. Audit all existing handlers: `accounts.go`, `summary.go`, `history.go` |
-| Alert rules UI requiring raw expression syntax | User doesn't know valid field names or operators, writes invalid expressions | Structured form with dropdowns: metric selector, operator selector, numeric input. Generate JSON from the form. Never accept free-text expressions |
-| Net worth drill-down showing daily noise from checking account fluctuations | Small daily changes obscure long-term trends | Default to 30-day moving average or weekly resolution. Provide "Daily" as an explicit toggle |
-| Sync diagnostics showing raw Go error chains | "sync: fetch accounts: simplefin: HTTP request failed: Get ..." is meaningless to a non-developer user | Map error patterns to user-friendly messages: "Could not connect to SimpleFIN", "Authentication failed (check your access URL)", "Unexpected response from SimpleFIN" |
+| Showing "Spending Analytics" page with < 30 days of transaction data | Misleading trends, incomplete picture, user loses trust | Show a clear onboarding state: "Collecting transaction data. Analytics will be available after [date]. Currently have [X] days of data." |
+| Requiring manual categorization of every transaction | Hours of tedious work, user abandons the feature | Auto-categorize with keyword rules, show only uncategorized transactions for review. Bulk "apply to all matching" action. |
+| Displaying investment "returns" that include contributions | User thinks they earned more than they did, then cross-references with brokerage and loses trust | Label clearly: "Balance change" vs. "Estimated return (excludes contributions)". If contribution tracking is not implemented, say so. |
+| Goal tracking with no progress visualization | User sets a goal and forgets about it | Show goal progress on the dashboard (progress bar or percentage). Send alert when goal is reached (reuse existing alert engine). |
+| Export that produces a single massive file | Large file is slow to generate, hard to open in Excel | Offer date-range selection for exports. Default to "last 12 months" not "all time." |
+| Spending charts defaulting to categories the user does not care about | User sees "Uncategorized: 60%" as the dominant category | Default view should be the top N categories by amount, with "Other" grouping the rest. Let user configure which categories to show. |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Account Renaming:** display_name appears in PanelCard account list (`accounts.go`) -- verify it ALSO appears in BalanceLineChart tooltips, NetWorthDonut labels, the new drill-down page account selector, alert rule displays, and projection account labels
-- [ ] **Crypto Aggregation:** summed balance is correct -- verify the aggregated entry also shows correct growth indicators (calculated from the sum of sub-account snapshot histories, not individual history averages)
-- [ ] **Growth Indicators:** percentage shows on PanelCard -- verify it handles: (a) negative balances (credit cards), (b) $0 previous balance, (c) accounts with only 1 snapshot, (d) negative growth rendering (red color, down arrow, not just a minus sign)
-- [ ] **Alert Rules:** alert fires correctly -- verify: (a) fires only ONCE per threshold crossing, (b) fires recovery notification when condition clears, (c) does NOT fire on initial rule creation if condition is already true (establish baseline first), (d) handles account disappearing mid-rule gracefully
-- [ ] **Alert Emails:** email sends successfully -- verify: (a) works when SMTP server is down (graceful failure, not crash/panic), (b) SMTP timeout does not block sync completion, (c) invalid email address is logged but not fatal, (d) email body does not contain SMTP credentials in error scenarios
-- [ ] **Sync Diagnostics:** errors display in settings -- verify: (a) no SimpleFIN credentials in displayed text, (b) no internal file paths exposed, (c) error messages are human-readable, (d) successful syncs also shown (not just errors)
-- [ ] **Financial Projections:** compound interest is correct -- verify: (a) uses `shopspring/decimal` not float64, (b) handles 0% APY without division-by-zero, (c) matches a reference calculator to the cent for 30-year projections, (d) income modeling allocations sum correctly
-- [ ] **Net Worth Drill-Down:** chart renders -- verify: (a) performs with 365+ data points per series, (b) time range selector filters server-side (not hiding client data), (c) hidden/deleted accounts excluded from totals
-- [ ] **Migration Safety:** all new migrations run against a v1.0 database with real data, not just empty test databases
+- [ ] **Transaction sync:** Often missing pending transaction handling -- verify that pending transactions are stored with `pending=true` and updated (not duplicated) when they clear.
+- [ ] **Spending analytics:** Often missing multi-currency handling -- verify that all amounts are converted to a display currency before summing (the existing codebase is USD-only, but SimpleFIN can return other currencies).
+- [ ] **Category rules:** Often missing rule ordering and priority -- verify that user-created rules take precedence over built-in rules, and that more specific rules match before general ones.
+- [ ] **Data export:** Often missing proper CSV escaping -- verify that transaction descriptions containing commas, quotes, and newlines are properly escaped. Test with real bank descriptions like `"PAYMENT - THANK YOU / REF #12345"`.
+- [ ] **Goal tracking:** Often missing the "what happens when the goal is met" state -- verify there is a completion state, celebration/notification, and option to archive or reset.
+- [ ] **Investment tracking:** Often missing cost basis tracking over time -- verify that `cost_basis` from SimpleFIN is stored historically, not just overwritten with the latest value, so gain/loss calculations are accurate.
+- [ ] **Transaction search:** Often missing search across descriptions AND categories -- verify full-text search covers both fields, not just one.
+- [ ] **Date handling:** Often missing timezone awareness in transaction dates -- verify that `posted` (Unix timestamp) is converted to the user's local date consistently, not sometimes UTC and sometimes local.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Stale account deletion destroys user-owned config | HIGH | No automatic recovery -- display_name, alert rules, APY settings are gone. Historical snapshots are gone. Must re-sync from SimpleFIN (gets current balance only). Database backup is the only recovery path. **Prevention is the only real strategy** |
-| Expression injection in alert rules | MEDIUM | Rotate `JWT_SECRET` and `PASSWORD_HASH`. Delete all stored alert rules. Audit sync_log for exploitation evidence. Redeploy with structured expression storage |
-| Alert flooding | LOW | Delete accumulated emails. Add state machine. Reset all alert states to `NORMAL`. No data loss |
-| SMTP credentials leaked via API | MEDIUM | Rotate SMTP password. Patch API to stop returning it. Audit logs for who accessed the endpoint |
-| Sync error leaking SimpleFIN URL | MEDIUM | Regenerate SimpleFIN access token (re-claim setup token in SimpleFIN Bridge). Sanitize existing `sync_log` rows. Patch error handling |
-| float64 projection errors | LOW | Replace with decimal arithmetic. No data loss -- projections are computed on the fly, not stored |
-| Migration leaves database in dirty state | HIGH | Manually fix `schema_migrations` table: set `dirty = false` and correct `version`. Write corrective migration. Requires direct SQLite access via `docker exec` into the volume |
-| org_name change breaks aggregation | MEDIUM | If using `org_slug` as key: no impact. If using `org_name`: must rebuild aggregation groups. User loses custom group names if any |
+| Duplicate transactions in database | MEDIUM | Write a dedup migration: GROUP BY (account_id, external_id), keep the row with the latest fetched_at, delete the rest. Recalculate any cached analytics. |
+| Corrupted balance data from transaction-sum override | HIGH | Restore balance_snapshots from backup. If no backup, re-sync with SimpleFIN (only gets last 90 days). Older data is permanently lost. |
+| Wrong category assignments (bad rules deployed) | LOW | Store `auto_category` and `user_category` separately. Reset `auto_category` by re-running rules. User overrides (`user_category`) are preserved. |
+| Migration failure leaving DB in partial state | HIGH | Pre-migration backup restores cleanly. Without backup: manually inspect `schema_migrations` table, determine which migration failed, apply fixes manually. SQLite's single-file nature makes backup/restore simpler than other DBs. |
+| Investment returns displayed incorrectly (includes contributions) | LOW | UI-only fix: change label from "Return" to "Balance change." Add disclaimer text. No data migration needed. |
+| SimpleFIN rate limit exceeded, token disabled | MEDIUM | Wait for token reset (typically 24 hours). If permanently disabled, user must reclaim a new setup token. Existing data is preserved locally. |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Stale account deletion destroys user data | Phase 1 (Account Renaming -- first migration) | Disconnect SimpleFIN, sync, reconnect, sync -- display_name and history intact |
-| Crypto aggregation merging wrong account types | Phase 1 (Crypto Aggregation) | Test data: same org, different types -- remain separate in UI |
-| org_name instability breaking aggregation | Phase 1 (Crypto Aggregation) | Change org_name in DB, sync -- aggregation grouping unchanged because keyed on org_slug |
-| Migration breaking existing data | Phase 1 (first migration) | Migration test against v1.0 database backup with real data |
-| Growth indicator division by zero | Phase 2 (Growth Indicators) | $0 previous -> shows "New"; 1 snapshot -> shows "Tracking..." |
-| Growth indicator misleading on credit cards | Phase 2 (Growth Indicators) | Credit card -$500 -> -$200 shows "Paid down $300" or correct positive improvement % |
-| Sync error leaking credentials | Phase 4 (Sync Diagnostics) | Break SimpleFIN URL, sync, check UI -- no credentials visible |
-| Expression injection in alert rules | Phase 5 (Alert Rules) | Attempt to inject `os.Getenv("JWT_SECRET")` -- rejected at parse time |
-| Alert threshold oscillation flooding | Phase 5 (Alert Rules) | Threshold at current balance, sync 3x -- exactly 1 email |
-| SMTP credentials exposed | Phase 5 (Alert Rules / Email) | `GET /api/settings` response has no smtp_password field |
-| float64 in projections | Phase 6 (Projections) | 30-year projection matches reference calculator to the cent |
-| Net worth drill-down performance | Phase 3 (Net Worth Drill-Down) | Load with 1000+ data points -- no browser freeze, server-side resolution control |
+| SimpleFIN client does not parse transactions | Transaction Storage (first phase) | Unit test verifying `Transaction` struct unmarshals from SimpleFIN JSON response |
+| Transaction deduplication | Transaction Storage (first phase) | Integration test: sync same transaction twice, verify only one row exists. Sync pending then cleared, verify update not duplicate. |
+| 90-day data window limitation | Transaction Storage + Analytics UI | Analytics UI shows "data since [date]" label. First sync requests 90-day window. Test that date range > 90 days does not break fetch. |
+| Categorization accuracy | Spending Analytics phase | User can override any category. Override persists across re-syncs. "Apply to all matching" works for historical transactions. |
+| Investment performance without contributions | Investment Tracking phase | Returns display is labeled "Balance change" not "Return" unless cash flows are manually tracked. |
+| Balance vs. transaction sum divergence | Transaction Storage (first phase) | Code review: no code path derives balance from transaction sums. Balance_snapshots remain the authority. |
+| Schema migration risk | Every phase | Pre-migration backup runs before each new migration. Down migration exists for every up migration. Migration tested against production DB copy. |
+| Export security | Data Export phase | Export endpoint requires JWT auth. No files persist on disk after download. Settings table excluded from export. |
 
 ## Sources
 
-- Direct codebase analysis: `internal/sync/sync.go` (stale account deletion, sync flow), `internal/simplefin/client.go` (credential handling), `internal/db/migrations/000001_init.up.sql` (current schema), `internal/api/handlers/*.go` (API response patterns), `internal/db/db.go` (connection config), `internal/config/config.go` (env var pattern), `frontend/src/components/PanelCard.tsx` (display_name usage surface)
-- [CVE-2025-68613: Critical RCE via Expression Injection in n8n](https://nvd.nist.gov/vuln/detail/CVE-2025-68613) -- CVSS 9.9, expression sandbox escape leading to full RCE
-- [SimpleFIN Protocol Specification](https://www.simplefin.org/protocol.html) -- org field structure, account ID semantics
-- [Handle Null Org Domain in SimpleFIN (Actual Budget PR #2836)](https://github.com/actualbudget/actual/pull/2836) -- real-world evidence that SimpleFIN org fields can be null
-- [SQLite concurrent writes and "database is locked" errors](https://tenthousandmeters.com/blog/sqlite-concurrent-writes-and-database-is-locked-errors/) -- WAL mode pitfalls, checkpoint starvation
-- [ShopSpring Decimal (pkg.go.dev)](https://pkg.go.dev/github.com/shopspring/decimal) -- JSON serialization precision warnings
-- [Self-Hosting Email: Deliverability Risks](https://powerdmarc.com/self-hosting-email/) -- SMTP deliverability challenges for self-hosted apps
-- [Mastering Database Migrations with golang-migrate and SQLite](https://dev.to/ouma_ouma/mastering-database-migrations-in-go-with-golang-migrate-and-sqlite-3jhb) -- SQLite-specific migration constraints
+- [SimpleFIN Protocol Specification](https://www.simplefin.org/protocol.html) -- Transaction fields: id, posted, amount, description, pending
+- [SimpleFIN Protocol on GitHub](https://github.com/simplefin/simplefin.github.com/blob/master/protocol.md) -- Full spec with JSON examples
+- [SimpleFIN Developer Guide](https://beta-bridge.simplefin.org/info/developers) -- Rate limits (24 req/day), 90-day max range, daily update cadence
+- [Actual Budget SimpleFIN duplicate transactions](https://github.com/actualbudget/actual/issues/2519) -- Real-world dedup issues
+- [Actual Budget cross-account mirror transactions](https://github.com/actualbudget/actual/issues/7015) -- Mercury bank mirror transaction bug
+- [Firefly III SimpleFIN import issues](https://github.com/firefly-iii/firefly-iii/issues/10550) -- Currency handling, duplication on re-import
+- [Actual Budget transaction importing docs](https://actualbudget.org/docs/transactions/importing/) -- Dedup strategies: OFX IDs, date+amount+payee matching
+- [CockroachDB: Idempotency in Finance](https://www.cockroachlabs.com/blog/idempotency-in-finance/) -- Idempotency key patterns for financial transactions
+- [shopspring/decimal Go package](https://pkg.go.dev/github.com/shopspring/decimal) -- Arbitrary-precision decimal, division-by-zero panic risk
+- [SQLite WAL mode documentation](https://www.sqlite.org/wal.html) -- Checkpoint starvation, concurrent read/write behavior
+- [Kitces.com: TWR vs IRR calculations](https://www.kitces.com/blog/twr-dwr-irr-calculations-performance-reporting-software-methodology-gips-compliance/) -- Time-Weighted vs Money-Weighted return methodologies
+- [Stripe: Transaction Categorization Guide](https://stripe.com/resources/more/what-is-transaction-categorization-a-guide-to-transaction-taxonomy-and-its-benefits) -- 70-85% accuracy ceiling, MCC code limitations
+- [Uncat: 5 Common Transaction Categorization Mistakes](https://www.uncat.com/blog/transaction-categorization) -- Over-reliance on automation, evolving merchant names
+- Existing codebase: `internal/simplefin/client.go`, `internal/sync/sync.go`, migration files 000001-000006
 
 ---
-*Pitfalls research for: v1.1 feature additions to Go/React/SQLite personal finance dashboard*
-*Researched: 2026-03-15*
+*Pitfalls research for: Adding features to Go/React/SQLite personal finance dashboard with SimpleFIN*
+*Researched: 2026-03-17*

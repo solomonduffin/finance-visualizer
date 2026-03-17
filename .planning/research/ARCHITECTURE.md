@@ -1,718 +1,710 @@
-# Architecture Research: v1.1 Feature Integration
+# Architecture Research
 
-**Domain:** Self-hosted personal finance dashboard -- 7 new features integrating into existing Go/React/SQLite stack
-**Researched:** 2026-03-15
-**Confidence:** HIGH -- all 7 features are well-understood patterns; existing codebase is clean and straightforward to extend
+**Domain:** Personal finance dashboard -- next-step feature integration
+**Researched:** 2026-03-17
+**Confidence:** HIGH (existing codebase fully inspected, SimpleFIN protocol verified)
 
-## Existing Architecture Snapshot
-
-Before detailing integration, here is the current system as-built in v1.0:
+## Current System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Docker Network                              │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                    Nginx (port 80/443)                         │  │
-│  │          /api/* -> Go:8080    /* -> React static               │  │
-│  └──────────────────────────┬────────────────────────────────────┘  │
-│                              │                                      │
-│  ┌──────────────────────────▼────────────────────────────────────┐  │
-│  │                    Go Backend (chi router)                     │  │
-│  │                                                                │  │
-│  │  cmd/server/main.go           internal/config/config.go        │  │
-│  │                                                                │  │
-│  │  internal/api/                                                 │  │
-│  │    router.go                  (7 routes, JWT middleware)        │  │
-│  │    handlers/                                                   │  │
-│  │      auth.go       summary.go      accounts.go                 │  │
-│  │      settings.go   history.go      health.go                   │  │
-│  │                                                                │  │
-│  │  internal/sync/sync.go        (SyncOnce, RunScheduler)         │  │
-│  │  internal/simplefin/client.go (FetchAccounts, ClaimSetupToken) │  │
-│  │  internal/db/db.go            (Open, WAL mode)                 │  │
-│  │  internal/db/migrations.go    (go-migrate with embed)          │  │
-│  │  internal/auth/auth.go        (JWT init + TokenAuth)           │  │
-│  └──────────────────────────┬────────────────────────────────────┘  │
-│                              │                                      │
-│  ┌──────────────────────────▼────────────────────────────────────┐  │
-│  │              SQLite (data/finance.db) -- WAL mode              │  │
-│  │                                                                │  │
-│  │  settings             key/value config store                   │  │
-│  │  accounts             id, name, account_type, org_name, ...    │  │
-│  │  balance_snapshots    account_id, balance, balance_date        │  │
-│  │  sync_log             started_at, finished_at, error_text      │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │              React SPA (Vite + TypeScript)                     │  │
-│  │                                                                │  │
-│  │  pages/Dashboard.tsx    pages/Settings.tsx    pages/Login.tsx   │  │
-│  │  components/PanelCard   BalanceLineChart      NetWorthDonut    │  │
-│  │  api/client.ts          hooks/useDarkMode     utils/format     │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+                         Existing Architecture (v1.1)
++----------------------------------------------------------------------+
+|                        React Frontend (Vite)                          |
+|  Pages: Dashboard, NetWorth, Alerts, Projections, Settings, Login     |
+|  Components: AccountsSection, BalanceLineChart, StackedAreaChart,     |
+|              AlertRuleForm, ProjectionChart, RateConfigTable, etc.     |
++----------------------------------+-----------------------------------+
+                                   | REST API (fetch w/ JWT cookie)
++----------------------------------+-----------------------------------+
+|                     Go Backend (chi router)                           |
+|  Handlers: auth, summary, accounts, history, growth, networth,        |
+|            alerts, projections, groups, settings, synclog, email       |
+|  Middleware: httplog, CORS, JWT (jwtauth), rate-limit (httprate)       |
++----------------------------------+-----------------------------------+
+                                   | database/sql
++----------------------------------+-----------------------------------+
+|                     SQLite (WAL mode)                                  |
+|  Tables: accounts, balance_snapshots, holdings, settings,             |
+|          account_groups, group_members, alert_rules, alert_history,    |
+|          projection_account_settings, projection_holding_settings,     |
+|          projection_income_settings, sync_log                         |
++----------------------------------------------------------------------+
+       ^
+       | Goroutine cron (daily) + on-demand POST /api/sync/now
++----------------------------------------------------------------------+
+|                     Sync Pipeline                                      |
+|  SimpleFIN -> FetchAccountsWithHoldings -> processAccount (upsert     |
+|  account + snapshot) -> persistHoldings -> soft-delete stale ->        |
+|  restore returning -> EvaluateAll alerts                              |
++----------------------------------------------------------------------+
 ```
 
-### Key Architectural Facts (from code analysis)
+### Component Responsibilities
 
-1. **No service layer exists.** Handlers query SQLite directly via `database.QueryContext`. Business logic (account type grouping, balance aggregation) lives in handler functions.
-2. **Sync is standalone.** `internal/sync/sync.go` owns the entire sync flow: read settings, call SimpleFIN, upsert accounts, insert snapshots, log results. Uses a package-level `syncMu` mutex for concurrency safety.
-3. **`*sql.DB` is passed directly** to all handler constructors and sync functions. No repository interfaces.
-4. **Migration files** use golang-migrate with embedded SQL (`//go:embed migrations/*.sql`). Only one migration exists (`000001_init`).
-5. **Frontend has no router for sub-pages.** BrowserRouter exists but only routes `/` (Dashboard), `/settings`, and catch-all redirect.
-6. **API client** is a single file with typed fetch wrappers. No state management library (no Redux/Zustand) -- components fetch directly.
+| Component | Responsibility | Key Pattern |
+|-----------|----------------|-------------|
+| `internal/sync/sync.go` | Orchestrate fetch, upsert, soft-delete lifecycle | `SyncOnce()` with mutex serialization |
+| `internal/simplefin/client.go` | HTTP client for SimpleFIN protocol | Returns `AccountSet` with `[]Account` |
+| `internal/api/handlers/*.go` | One file per feature domain, closure-based handlers | `func HandlerName(db *sql.DB) http.HandlerFunc` |
+| `internal/api/router.go` | Route registration, middleware stack | Public vs protected route groups |
+| `internal/alerts/` | Expression evaluation engine | `expr-lang/expr` sandboxed evaluation |
+| `internal/db/` | Migration runner, connection setup | golang-migrate with numbered SQL files |
+| `frontend/src/api/client.ts` | Typed fetch wrapper for all endpoints | One function per endpoint, credentials: 'include' |
+| `frontend/src/pages/*.tsx` | Full-page views (Dashboard, NetWorth, etc.) | Fetch on mount, loading/error states |
+| `frontend/src/components/*.tsx` | Reusable UI pieces (charts, cards, forms) | Props-driven, test file alongside |
 
-## v1.1 Feature Integration Map
+## Feature Integration Analysis
 
-### Feature-by-Feature Analysis
+### Feature 1: Transaction Data Ingestion
 
-Each feature is assessed for: schema changes, backend changes (new vs modified files), frontend changes (new vs modified files), new API endpoints, and dependencies on other features.
+**What:** Capture and store transaction data from SimpleFIN alongside existing balance snapshots.
 
----
+**Critical discovery:** SimpleFIN already provides transactions. The current codebase calls `FetchAccountsWithHoldings()` which does NOT set `balances-only=1`. The `Account` struct already has a `Holdings` field parsed from the response. Transaction data is present in the JSON response but the Go struct does NOT include a `Transactions` field -- it is silently dropped during `json.Decode`. Enabling transaction capture requires adding a `Transactions` field to the `Account` struct and persisting the data.
 
-### Feature 1: Crypto Account Aggregation
+**SimpleFIN Transaction object** (from protocol spec):
+```json
+{
+  "id": "12394832938403",
+  "posted": 793090572,
+  "amount": "-33293.43",
+  "description": "Uncle Frank's Bait Shop",
+  "pending": true,
+  "extra": { "category": "food" }
+}
+```
 
-**What:** Group crypto accounts by institution (e.g., all Coinbase wallets show as one summed line in the Investments panel).
-
-**Schema changes:** None. The `accounts` table already has `org_name` and `org_slug`. Aggregation is a query-time concern.
-
-**Backend changes (MODIFY):**
-- `internal/api/handlers/accounts.go` -- Add query parameter `?group_crypto=true` or make it the default. When grouping, use `GROUP BY org_slug` for investment accounts where `org_name` matches known crypto institutions, summing balances.
-- `internal/api/handlers/summary.go` -- No change needed. Summary already sums all investment accounts regardless of grouping.
-
-**Alternative approach (preferred):** Add a new `is_crypto` boolean column to `accounts` via migration, set it during sync based on heuristics (org name contains "coinbase", "kraken", etc.), and group by `org_slug` where `is_crypto = true` in the accounts endpoint. This is more reliable than runtime heuristics.
-
-**Frontend changes (MODIFY):**
-- `frontend/src/components/PanelCard.tsx` -- Modify the account list rendering to show grouped entries. When the API returns a grouped crypto item, render it as a single line with the institution name.
-- `frontend/src/api/client.ts` -- Update `AccountItem` type to include optional `grouped_count` field.
-
-**New API endpoints:** None. Modify existing `GET /api/accounts`.
-
-**Dependencies:** None. This feature is standalone.
-
----
-
-### Feature 2: Account Renaming
-
-**What:** Users set custom display names for accounts in Settings. These names are used globally (dashboard, drill-down, alerts).
-
-**Schema changes:**
-- **Migration 000002:** `ALTER TABLE accounts ADD COLUMN display_name TEXT;`
-
-**Backend changes (MODIFY):**
-- `internal/api/handlers/accounts.go` -- Return `display_name` alongside `name`. Frontend decides which to show.
-- `internal/api/handlers/summary.go` -- No change (sums by type, doesn't use names).
-- `internal/sync/sync.go` -- The upsert in `processAccount` must NOT overwrite `display_name` on sync. Modify the `ON CONFLICT` clause to exclude `display_name` from the UPDATE set.
-
-**Backend changes (NEW):**
-- `internal/api/handlers/account_settings.go` -- New handler: `PUT /api/accounts/{id}/display-name` accepting `{"display_name": "My Checking"}`. Updates the `display_name` column.
-
-**Frontend changes (MODIFY):**
-- `frontend/src/components/PanelCard.tsx` -- Use `display_name || name` for rendering.
-- `frontend/src/api/client.ts` -- Add `display_name` to `AccountItem`, add `updateAccountDisplayName()` function.
-
-**Frontend changes (NEW):**
-- `frontend/src/pages/Settings.tsx` -- Add an "Account Names" section listing all accounts with inline edit fields. (Extend existing page, not a new page.)
-
-**New API endpoints:**
-- `PUT /api/accounts/{id}/display-name`
-
-**Dependencies:** None. Standalone, but should be built before features that display account names (drill-down, alerts) so they all use display_name from the start.
-
----
-
-### Feature 3: Growth Rate Indicators
-
-**What:** Show percentage change (e.g., +2.3% this month) on each PanelCard.
-
-**Schema changes:** None. Derived from existing `balance_snapshots`.
-
-**Backend changes (MODIFY):**
-- `internal/api/handlers/summary.go` -- Extend the summary response to include growth fields. Query the previous period's totals (e.g., 30 days ago) alongside current totals and compute `(current - previous) / |previous| * 100`. Return `liquid_growth`, `savings_growth`, `investments_growth` as string percentages.
-
-**Alternative approach:** Compute growth on the frontend from balance-history data already fetched. This avoids a backend change but couples the Dashboard component to history data for a summary display. **Recommendation: compute in backend** because the summary endpoint is the canonical source and the growth values should be consistent regardless of which frontend page requests them.
-
-**Frontend changes (MODIFY):**
-- `frontend/src/api/client.ts` -- Add growth fields to `SummaryResponse`.
-- `frontend/src/components/PanelCard.tsx` -- Add a growth badge (green up-arrow / red down-arrow) below the total. Accept `growth` prop.
-- `frontend/src/pages/Dashboard.tsx` -- Pass growth values from summary to PanelCard.
-
-**New API endpoints:** None. Extend existing `GET /api/summary`.
-
-**Dependencies:** None. Standalone.
-
----
-
-### Feature 4: Net Worth Drill-Down Page
-
-**What:** New page with detailed historical graphs, per-account breakdowns, and pattern analysis.
-
-**Schema changes:** None. All data exists in `balance_snapshots` and `accounts`.
-
-**Backend changes (NEW):**
-- `internal/api/handlers/drilldown.go` -- New handler: `GET /api/balance-history/detailed` returning per-account time-series data (not aggregated by panel type). Returns `{ accounts: [{ id, name, display_name, type, org_name, history: [{date, balance}] }] }`.
-
-**Backend changes (MODIFY):**
-- `internal/api/router.go` -- Register new route.
-
-**Frontend changes (NEW):**
-- `frontend/src/pages/NetWorthDrillDown.tsx` -- New page with:
-  - Stacked area chart showing all accounts over time (using Recharts AreaChart with multiple Area elements)
-  - Account-level line charts (toggle which accounts are visible)
-  - Summary stats (total net worth, 30d/90d/1y growth, best/worst performing account)
-- `frontend/src/components/StackedAreaChart.tsx` -- New chart component for the stacked view.
-
-**Frontend changes (MODIFY):**
-- `frontend/src/App.tsx` -- Add route `/net-worth` pointing to new page.
-- `frontend/src/App.tsx` (NavBar) -- Add navigation link.
-- `frontend/src/api/client.ts` -- Add `getDetailedHistory()` function and types.
-
-**New API endpoints:**
-- `GET /api/balance-history/detailed?days=N`
-
-**Dependencies:** Feature 2 (account renaming) should be done first so drill-down uses display names from day one.
-
----
-
-### Feature 5: Sync Diagnostics
-
-**What:** Show sync history and failure details in Settings page.
-
-**Schema changes:** None. `sync_log` table already captures `started_at`, `finished_at`, `accounts_fetched`, `accounts_failed`, `error_text`.
-
-**Backend changes (NEW):**
-- `internal/api/handlers/sync_diagnostics.go` -- New handler: `GET /api/sync/log?limit=N` returning recent sync_log entries as JSON array. Each entry includes all sync_log columns.
-
-**Backend changes (MODIFY):**
-- `internal/api/router.go` -- Register new route.
-
-**Frontend changes (MODIFY):**
-- `frontend/src/pages/Settings.tsx` -- Add a "Sync History" section below the existing Sync Status card. Show a table/list of recent syncs with timestamp, accounts fetched, accounts failed, and error text (expandable).
-- `frontend/src/api/client.ts` -- Add `getSyncLog()` function and `SyncLogEntry` type.
-
-**New API endpoints:**
-- `GET /api/sync/log?limit=N`
-
-**Dependencies:** None. Standalone.
-
----
-
-### Feature 6: Alert Rules with Email Notifications
-
-**What:** User defines rules like "notify me when liquid < $5000" or "investments drop > 10% in a week". Alerts fire once on threshold crossing, once on recovery. Email delivery via SMTP or API provider.
-
-**Schema changes:**
-- **Migration 000003 (or combined with others):**
+**New table (migration 000007):**
 
 ```sql
-CREATE TABLE alert_rules (
+CREATE TABLE IF NOT EXISTS transactions (
+    id              TEXT NOT NULL,
+    account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    posted          DATETIME NOT NULL,
+    amount          TEXT NOT NULL,        -- shopspring/decimal string
+    description     TEXT NOT NULL DEFAULT '',
+    pending         INTEGER NOT NULL DEFAULT 0,
+    category        TEXT,                 -- from SimpleFIN extra.category
+    user_category   TEXT,                 -- user override (future)
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, account_id)          -- SimpleFIN IDs are unique per account
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_account_posted
+    ON transactions(account_id, posted DESC);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_posted
+    ON transactions(posted DESC);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_category
+    ON transactions(COALESCE(user_category, category));
+```
+
+**Modified files:**
+
+| File | Change |
+|------|--------|
+| `internal/simplefin/client.go` | Add `Transaction` struct, add `Transactions []Transaction` to `Account` |
+| `internal/sync/sync.go` | Add `persistTransactions()` function, call from `SyncOnce` loop |
+| `internal/api/handlers/transactions.go` | NEW: `GetTransactions`, search handler |
+| `internal/api/router.go` | Add `GET /api/transactions` |
+| `frontend/src/api/client.ts` | Add `TransactionItem`, `TransactionsResponse`, `getTransactions()` |
+
+**Sync pipeline change:**
+
+```
+Current:  processAccount -> persistHoldings
+Proposed: processAccount -> persistHoldings -> persistTransactions
+```
+
+`persistTransactions` should use `INSERT ... ON CONFLICT(id, account_id) DO UPDATE` (upsert), not DELETE + INSERT. Unlike holdings (which are replace-all because SimpleFIN always returns the full set), transactions have a 90-day rolling window. Using upsert preserves older transactions that SimpleFIN no longer returns.
+
+**New endpoints:**
+
+| Method | Path | Query Params | Purpose |
+|--------|------|-------------|---------|
+| GET | `/api/transactions` | `?account_id=X&days=N&limit=50&offset=0` | Paginated transaction list |
+| GET | `/api/transactions/search` | `?q=term&days=90` | Text search on description |
+
+**New frontend:**
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `pages/Transactions.tsx` | Page | Transaction list with filters |
+| `components/TransactionRow.tsx` | Component | Single transaction display |
+| `components/TransactionFilters.tsx` | Component | Account/date/search filter bar |
+
+**Data volume estimate:** Single user, ~10-50 transactions/day across all accounts = ~1,500/month = ~18,000/year. SQLite handles this trivially.
+
+---
+
+### Feature 2: Spending Analytics
+
+**What:** Categorize transactions and show spending breakdowns (by category, by merchant, over time).
+
+**Depends on:** Transaction data (Feature 1).
+
+**Architecture approach:** Server-side aggregation, client-side charting. The existing pattern of returning pre-aggregated JSON (like `GetSummary`, `GetNetWorth`) works well. Do NOT send raw transactions to the frontend for aggregation -- the handler should run SQL GROUP BY queries.
+
+**New table (migration 000008):**
+
+```sql
+CREATE TABLE IF NOT EXISTS category_rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    expression  TEXT NOT NULL,           -- e.g., "liquid < 5000"
-    enabled     INTEGER NOT NULL DEFAULT 1,
-    last_state  TEXT DEFAULT 'normal',   -- 'normal' | 'triggered'
-    last_eval   DATETIME,
+    pattern     TEXT NOT NULL,            -- substring match on description
+    category    TEXT NOT NULL,            -- target category name
+    priority    INTEGER NOT NULL DEFAULT 0,
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE alert_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    rule_id     INTEGER NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
-    state       TEXT NOT NULL,           -- 'triggered' | 'recovered'
-    eval_result TEXT,                    -- the computed value at evaluation time
-    notified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS categories (
+    name        TEXT PRIMARY KEY,
+    icon        TEXT,                     -- emoji or icon identifier
+    color       TEXT,                     -- hex color for charts
+    sort_order  INTEGER NOT NULL DEFAULT 0
 );
 ```
 
-**Backend changes (NEW):**
-- `internal/alerts/evaluator.go` -- Expression evaluation engine. Use [expr-lang/expr](https://github.com/expr-lang/expr) for safe, sandboxed expression evaluation. Define an environment struct with fields: `liquid`, `savings`, `investments`, `net_worth`, plus per-account balances accessible as `account["Display Name"]`. Evaluate the user's expression string against this environment, returning a boolean.
-- `internal/alerts/engine.go` -- Alert evaluation orchestrator. Called after each sync completes. Loads all enabled rules, evaluates each against current data, compares result to `last_state`, fires notification on state transition (normal->triggered or triggered->normal), updates `last_state` and writes to `alert_history`.
-- `internal/alerts/notifier.go` -- Email notification sender. Uses [wneessen/go-mail](https://github.com/wneessen/go-mail) for SMTP delivery. Reads SMTP config from settings table. Sends a formatted email with rule name, current value, threshold, and timestamp.
-- `internal/api/handlers/alerts.go` -- CRUD handlers for alert rules:
-  - `GET /api/alerts` -- list all rules with last_state
-  - `POST /api/alerts` -- create rule (validates expression with expr.Compile before saving)
-  - `PUT /api/alerts/{id}` -- update rule
-  - `DELETE /api/alerts/{id}` -- delete rule
-  - `GET /api/alerts/{id}/history` -- get alert history for a rule
+**Why server-side categorization over client-side:**
+- Consistent across all views (spending page, cashflow, alerts)
+- Can run during sync (batch categorize new transactions)
+- `user_category` column on transactions table acts as override
+- Category rules are simple substring match, evaluated in priority order
+- No ML needed -- manual rules + corrections work well for single users
 
-**Backend changes (MODIFY):**
-- `internal/sync/sync.go` -- After `finalize(fetched, failed, nil)` in `SyncOnce`, call `alerts.EvaluateAll(ctx, db)` to trigger alert evaluation on every successful sync.
-- `internal/api/handlers/settings.go` -- Extend `SaveSettings` / `GetSettings` to handle SMTP configuration keys (`smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_from`, `alert_email_to`). Store in existing `settings` table as key/value pairs.
-- `internal/api/router.go` -- Register alert routes.
-- `internal/config/config.go` -- No change needed. SMTP config lives in the settings table (user-configurable at runtime), not in environment variables.
+**New endpoints:**
 
-**Frontend changes (NEW):**
-- `frontend/src/pages/Alerts.tsx` -- New page for managing alert rules. Includes:
-  - Rule list with enable/disable toggle, last state indicator, delete button
-  - "Add Rule" form with expression input, name field
-  - Expression syntax help text (available variables, operators)
-- `frontend/src/components/AlertRuleForm.tsx` -- Form component for creating/editing rules.
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/spending` | `?days=30&group_by=category` -- aggregated spending |
+| GET | `/api/spending/trends` | `?months=6` -- monthly spending by category |
+| GET | `/api/categories` | List all categories with rules |
+| POST | `/api/categories` | Create/update category |
+| PUT | `/api/transactions/{id}/category` | Override transaction category |
+| POST | `/api/category-rules` | Create auto-categorization rule |
 
-**Frontend changes (MODIFY):**
-- `frontend/src/App.tsx` -- Add route `/alerts` and nav link.
-- `frontend/src/pages/Settings.tsx` -- Add "Email Notifications" section for SMTP configuration.
-- `frontend/src/api/client.ts` -- Add alert CRUD functions and types.
+**New frontend:**
 
-**New API endpoints:**
-- `GET /api/alerts`
-- `POST /api/alerts`
-- `PUT /api/alerts/{id}`
-- `DELETE /api/alerts/{id}`
-- `GET /api/alerts/{id}/history`
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `pages/Spending.tsx` | Page | Spending analytics dashboard |
+| `components/SpendingDonut.tsx` | Component | Category breakdown (Recharts PieChart) |
+| `components/SpendingTrends.tsx` | Component | Monthly trends (Recharts BarChart, stacked) |
+| `components/CategoryManager.tsx` | Component | Category rules CRUD |
 
-**Dependencies:** Feature 2 (account renaming) should be built first so expressions can reference display names. Feature 3 (growth indicators) is useful context but not a hard dependency.
+**SQL aggregation pattern:**
+
+```sql
+SELECT
+    strftime('%Y-%m', posted) AS month,
+    COALESCE(user_category, category, 'Uncategorized') AS cat,
+    SUM(CAST(amount AS REAL)) AS total
+FROM transactions t
+JOIN accounts a ON t.account_id = a.id
+WHERE a.hidden_at IS NULL
+  AND CAST(t.amount AS REAL) < 0
+  AND t.posted >= date('now', '-6 months')
+GROUP BY month, cat
+ORDER BY month, total;
+```
 
 ---
 
-### Feature 7: Projected Net Worth with Income Modeling
+### Feature 3: Investment Performance Tracking
 
-**What:** A projections page showing future net worth based on per-account growth rates (APY), reinvestment toggles, income allocation, and a configurable time horizon.
+**What:** Track investment returns over time using holdings history snapshots.
 
-**Schema changes:**
-- **Migration 000004 (or combined):**
+**Depends on:** None (builds on existing holdings table). Independent of transactions.
+
+**Key insight:** The current `persistHoldings` function does DELETE + INSERT (full replacement). Historical holdings data is lost every sync. To track performance, holdings snapshots must be preserved over time, just like `balance_snapshots` preserves daily balances.
+
+**New table (migration 000009):**
 
 ```sql
-CREATE TABLE projection_config (
+CREATE TABLE IF NOT EXISTS holdings_snapshots (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    holding_id      TEXT NOT NULL,
     account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    apy             TEXT NOT NULL DEFAULT '0',       -- annual percentage yield as decimal string
-    reinvest        INTEGER NOT NULL DEFAULT 1,      -- 1 = compound, 0 = simple
-    UNIQUE(account_id)
+    symbol          TEXT,
+    description     TEXT NOT NULL,
+    shares          TEXT,
+    market_value    TEXT NOT NULL,
+    cost_basis      TEXT,
+    snapshot_date   DATE NOT NULL,
+    UNIQUE(holding_id, snapshot_date)
 );
 
-CREATE TABLE income_allocations (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    name            TEXT NOT NULL,                    -- e.g., "Monthly Salary"
-    amount          TEXT NOT NULL,                    -- monthly contribution amount
-    account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    enabled         INTEGER NOT NULL DEFAULT 1
-);
+CREATE INDEX IF NOT EXISTS idx_holdings_snapshots_account_date
+    ON holdings_snapshots(account_id, snapshot_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_holdings_snapshots_symbol_date
+    ON holdings_snapshots(symbol, snapshot_date DESC);
 ```
 
-**Backend changes (NEW):**
-- `internal/projections/engine.go` -- Projection computation engine. Takes current balances, per-account APY, reinvestment flags, income allocations, and time horizon (months). Computes month-by-month projected balances using compound interest formula: `balance * (1 + apy/12)^months` for reinvest, or `balance + (balance * apy/12 * months)` for simple. Adds monthly income allocations. Returns a time-series of projected values per account and total net worth.
-- `internal/api/handlers/projections.go` -- Handlers:
-  - `GET /api/projections/config` -- returns all projection_config and income_allocation rows
-  - `PUT /api/projections/config` -- bulk save projection configs (all accounts at once)
-  - `POST /api/projections/income` -- add income allocation
-  - `DELETE /api/projections/income/{id}` -- remove income allocation
-  - `GET /api/projections/compute?months=N` -- runs the projection engine and returns the time-series result
+**Modified files:**
 
-**Backend changes (MODIFY):**
-- `internal/api/router.go` -- Register projection routes.
+| File | Change |
+|------|--------|
+| `internal/sync/sync.go` | `persistHoldings` also inserts into `holdings_snapshots` (upsert on holding_id + date) |
+| `internal/api/handlers/holdings.go` | NEW: `GetHoldings`, `GetHoldingsHistory` |
 
-**Frontend changes (NEW):**
-- `frontend/src/pages/Projections.tsx` -- New page with:
-  - Configuration panel: per-account APY inputs, reinvestment toggles, income allocation manager
-  - Projection chart: line chart showing projected net worth over time horizon
-  - Time horizon selector (1y, 3y, 5y, 10y)
-  - Comparison lines (with vs without income, with vs without reinvestment)
-- `frontend/src/components/ProjectionChart.tsx` -- Recharts line chart with multiple series.
+**Performance calculation:** Simple return, not time-weighted. TWR requires tracking cash flows (purchases/sales) that SimpleFIN does not explicitly provide. The user already uses ProjectionLab for sophisticated analysis.
 
-**Frontend changes (MODIFY):**
-- `frontend/src/App.tsx` -- Add route `/projections` and nav link.
-- `frontend/src/api/client.ts` -- Add projection API functions and types.
+```
+Return % = (current_market_value - cost_basis) / cost_basis * 100
+Daily change = today_market_value - yesterday_market_value
+```
 
-**New API endpoints:**
-- `GET /api/projections/config`
-- `PUT /api/projections/config`
-- `POST /api/projections/income`
-- `DELETE /api/projections/income/{id}`
-- `GET /api/projections/compute?months=N`
+**New endpoints:**
 
-**Dependencies:** Feature 2 (account renaming) for display names in the configuration UI. No functional dependency on other features.
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/holdings` | Current holdings with return calculations |
+| GET | `/api/holdings/history` | `?symbol=VTSAX&days=90` -- value over time |
+
+**New frontend:**
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `pages/Investments.tsx` | Page | Holdings overview with performance |
+| `components/HoldingsTable.tsx` | Component | Current value, cost basis, return % |
+| `components/HoldingChart.tsx` | Component | Market value over time (LineChart) |
 
 ---
 
-## Combined Schema Migration Plan
+### Feature 4: Data Export
 
-All schema changes should be delivered as separate numbered migrations for clean rollback:
+**What:** Export financial data as CSV/JSON for external tools, tax prep, or backup.
 
+**Depends on:** Feature 1 (transactions) for full value, but balance/account export works independently.
+
+**Architecture:** Export handlers are stateless -- query DB, stream response. No new tables. Use `Content-Disposition: attachment` for browser download.
+
+**New endpoints:**
+
+| Method | Path | Content-Type | Purpose |
+|--------|------|-------------|---------|
+| GET | `/api/export/balances` | `text/csv` | Balance history CSV |
+| GET | `/api/export/transactions` | `text/csv` | Transaction history CSV |
+| GET | `/api/export/holdings` | `text/csv` | Current holdings CSV |
+| GET | `/api/export/all` | `application/json` | Full database export as JSON |
+
+**New handler file:** `internal/api/handlers/export.go`
+
+**CSV streaming pattern:**
+
+```go
+func ExportBalances(db *sql.DB) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/csv")
+        w.Header().Set("Content-Disposition",
+            `attachment; filename="balances.csv"`)
+        writer := csv.NewWriter(w)
+        defer writer.Flush()
+        writer.Write([]string{"date", "account", "balance"})
+        rows, _ := db.Query(`SELECT ...`)
+        defer rows.Close()
+        for rows.Next() { /* scan and write */ }
+    }
+}
 ```
-internal/db/migrations/
-  000001_init.up.sql              (existing)
-  000001_init.down.sql            (existing)
-  000002_account_display_name.up.sql
-  000002_account_display_name.down.sql
-  000003_alert_rules.up.sql
-  000003_alert_rules.down.sql
-  000004_projections.up.sql
-  000004_projections.down.sql
-```
 
-**Migration 000002:**
+**Frontend:** Download buttons in Settings page. `window.location.href = '/api/export/balances'` triggers download with JWT cookie. No new page needed.
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `components/ExportSection.tsx` | Component | Export buttons within Settings page |
+
+---
+
+### Feature 5: Goal Tracking
+
+**What:** Set financial goals (emergency fund, down payment, debt payoff) and track progress.
+
+**Depends on:** None (uses existing account/balance data).
+
+**New table (migration 000010):**
+
 ```sql
-ALTER TABLE accounts ADD COLUMN display_name TEXT;
+CREATE TABLE IF NOT EXISTS goals (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    target_amount   TEXT NOT NULL,
+    target_date     DATE,
+    goal_type       TEXT NOT NULL DEFAULT 'savings'
+                    CHECK(goal_type IN ('savings', 'debt_payoff', 'net_worth')),
+    operands        TEXT NOT NULL DEFAULT '[]',
+    icon            TEXT,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-**Migration 000003:**
+**Architectural win -- reuse the alert operand engine:** The existing alert system has a flexible operand structure (bucket/group/account selectors with +/- operators) and `EvaluateExpression` logic. Goals use the same `operands` JSON format. Progress is `current_value / target_amount * 100`. This avoids building a second account-selection mechanism. Consider extracting the shared evaluation logic to `internal/eval/` so both alerts and goals import it.
+
+**New endpoints:**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/goals` | List goals with current progress |
+| POST | `/api/goals` | Create a goal |
+| PUT | `/api/goals/{id}` | Update a goal |
+| DELETE | `/api/goals/{id}` | Delete a goal |
+
+**New frontend:**
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `pages/Goals.tsx` | Page | Goals dashboard with progress bars |
+| `components/GoalCard.tsx` | Component | Single goal with progress ring |
+| `components/GoalForm.tsx` | Component | Goal form (reuse operand selector from AlertRuleForm) |
+
+---
+
+### Feature 6: Recurring Transaction Detection
+
+**What:** Identify recurring transactions (subscriptions, bills, income) from transaction history.
+
+**Depends on:** Feature 1 (transactions). Needs 60+ days of history for reliable detection.
+
+**Architecture:** Batch detection during sync, stored in a table. NOT real-time.
+
+**Detection algorithm:**
+1. Group transactions by normalized description (lowercase, strip variable parts like dates/reference numbers)
+2. For each group with 3+ occurrences, compute average interval between postings
+3. If interval is consistent (within +/- 5 days) and near a known period (weekly/biweekly/monthly/quarterly/annual), flag as recurring
+4. Store with confidence score; user can confirm or dismiss
+
+**New table (migration 000011):**
+
 ```sql
-CREATE TABLE alert_rules (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    expression  TEXT NOT NULL,
-    enabled     INTEGER NOT NULL DEFAULT 1,
-    last_state  TEXT NOT NULL DEFAULT 'normal',
-    last_eval   DATETIME,
-    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS recurring_patterns (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    description_pattern TEXT NOT NULL,
+    account_id          TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    avg_amount          TEXT NOT NULL,
+    frequency           TEXT NOT NULL CHECK(frequency IN
+                        ('weekly','biweekly','monthly','quarterly','annual')),
+    confidence          REAL NOT NULL DEFAULT 0.0,
+    next_expected       DATE,
+    is_income           INTEGER NOT NULL DEFAULT 0,
+    user_confirmed      INTEGER NOT NULL DEFAULT 0,
+    user_dismissed      INTEGER NOT NULL DEFAULT 0,
+    last_seen_at        DATETIME,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE alert_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    rule_id     INTEGER NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
-    state       TEXT NOT NULL,
-    eval_result TEXT,
-    notified_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_alert_history_rule ON alert_history(rule_id, notified_at DESC);
+CREATE INDEX IF NOT EXISTS idx_recurring_patterns_account
+    ON recurring_patterns(account_id);
 ```
 
-**Migration 000004:**
-```sql
-CREATE TABLE projection_config (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id  TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    apy         TEXT NOT NULL DEFAULT '0',
-    reinvest    INTEGER NOT NULL DEFAULT 1,
-    UNIQUE(account_id)
-);
+**Sync pipeline integration:**
 
-CREATE TABLE income_allocations (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL,
-    amount      TEXT NOT NULL,
-    account_id  TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    enabled     INTEGER NOT NULL DEFAULT 1
-);
+```
+processAccount -> persistHoldings -> persistTransactions
+  -> (after all accounts) detectRecurringPatterns -> EvaluateAll alerts
 ```
 
-Optional migration 000005 for crypto grouping (if the `is_crypto` column approach is chosen):
-```sql
-ALTER TABLE accounts ADD COLUMN is_crypto INTEGER NOT NULL DEFAULT 0;
-```
+**New endpoints:**
 
-## New Backend File Map
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/recurring` | List detected recurring transactions |
+| PATCH | `/api/recurring/{id}` | Confirm or dismiss a pattern |
+
+**Frontend:** `components/RecurringList.tsx` -- lives within Spending or Transactions page.
+
+---
+
+### Feature 7: Cashflow Forecasting
+
+**What:** Project future cash position based on recurring transactions and income.
+
+**Depends on:** Feature 1 (transactions), Feature 6 (recurring detection). Capstone feature.
+
+**Architecture:** Client-side calculation, same pattern as Projections page. Server provides inputs; frontend computes the forecast with `useMemo`. Enables interactive "what-if" (toggle subscriptions on/off).
+
+**No new tables.** Consumes: `recurring_patterns`, `balance_snapshots`, optionally `goals`.
+
+**New endpoint:**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/cashflow/inputs` | Liquid balance + active recurring patterns + goals |
+
+**New frontend:**
+
+| Component | Type | Purpose |
+|-----------|------|---------|
+| `pages/Cashflow.tsx` | Page | Cashflow forecast with interactive chart |
+| `components/CashflowChart.tsx` | Component | Projected balance (Recharts AreaChart) |
+| `components/CashflowAssumptions.tsx` | Component | Toggle recurring items for what-if |
+
+---
+
+## Recommended Project Structure (New Files)
 
 ```
 internal/
-  api/
-    router.go                          MODIFY (add 12+ new routes)
-    handlers/
-      accounts.go                      MODIFY (crypto grouping, display_name)
-      summary.go                       MODIFY (growth indicators)
-      settings.go                      MODIFY (SMTP config, account renaming section)
-      history.go                       unchanged
-      auth.go                          unchanged
-      health.go                        unchanged
-      account_settings.go              NEW (PUT display name)
-      drilldown.go                     NEW (detailed balance history)
-      sync_diagnostics.go              NEW (sync log endpoint)
-      alerts.go                        NEW (alert CRUD + history)
-      projections.go                   NEW (projection config + compute)
+  api/handlers/
+    transactions.go        # GET /api/transactions, search
+    spending.go            # GET /api/spending, /spending/trends
+    categories.go          # CRUD for categories and rules
+    holdings_perf.go       # GET /api/holdings, /holdings/history
+    export.go              # GET /api/export/*
+    goals.go               # CRUD for goals
+    recurring.go           # GET/PATCH /api/recurring
+    cashflow.go            # GET /api/cashflow/inputs
   sync/
-    sync.go                            MODIFY (call alert evaluation after sync)
-  alerts/                              NEW PACKAGE
-    evaluator.go                       NEW (expr-lang expression evaluation)
-    engine.go                          NEW (evaluate all rules, detect transitions)
-    notifier.go                        NEW (email sending via go-mail)
-  projections/                         NEW PACKAGE
-    engine.go                          NEW (compound interest, income modeling)
-  db/
-    migrations/
-      000002_account_display_name.*    NEW
-      000003_alert_rules.*             NEW
-      000004_projections.*             NEW
-```
+    transactions.go        # persistTransactions()
+    recurring.go           # detectRecurringPatterns()
+  eval/                    # NEW: shared expression evaluation
+    eval.go                # Extracted from internal/alerts
+  db/migrations/
+    000007_transactions.{up,down}.sql
+    000008_spending_categories.{up,down}.sql
+    000009_holdings_snapshots.{up,down}.sql
+    000010_goals.{up,down}.sql
+    000011_recurring_patterns.{up,down}.sql
 
-## New Frontend File Map
-
-```
 frontend/src/
-  App.tsx                              MODIFY (3 new routes, nav links)
-  api/client.ts                        MODIFY (new types + API functions)
   pages/
-    Dashboard.tsx                      MODIFY (pass growth to PanelCard)
-    Settings.tsx                       MODIFY (sync diagnostics, SMTP config, account names)
-    NetWorthDrillDown.tsx              NEW
-    Alerts.tsx                         NEW
-    Projections.tsx                    NEW
+    Transactions.tsx
+    Spending.tsx
+    Investments.tsx
+    Goals.tsx
+    Cashflow.tsx
   components/
-    PanelCard.tsx                      MODIFY (growth badge, display_name, crypto grouping)
-    StackedAreaChart.tsx               NEW
-    ProjectionChart.tsx                NEW
-    AlertRuleForm.tsx                  NEW
+    TransactionRow.tsx
+    TransactionFilters.tsx
+    SpendingDonut.tsx
+    SpendingTrends.tsx
+    CategoryManager.tsx
+    HoldingsTable.tsx
+    HoldingChart.tsx
+    GoalCard.tsx
+    GoalForm.tsx
+    RecurringList.tsx
+    CashflowChart.tsx
+    CashflowAssumptions.tsx
+    ExportSection.tsx
 ```
 
-## New API Endpoints Summary
+### Structure Rationale
 
-| Endpoint | Method | Feature | Handler File |
-|----------|--------|---------|--------------|
-| `/api/accounts/{id}/display-name` | PUT | Account Renaming | account_settings.go |
-| `/api/balance-history/detailed` | GET | Net Worth Drill-Down | drilldown.go |
-| `/api/sync/log` | GET | Sync Diagnostics | sync_diagnostics.go |
-| `/api/alerts` | GET | Alert Rules | alerts.go |
-| `/api/alerts` | POST | Alert Rules | alerts.go |
-| `/api/alerts/{id}` | PUT | Alert Rules | alerts.go |
-| `/api/alerts/{id}` | DELETE | Alert Rules | alerts.go |
-| `/api/alerts/{id}/history` | GET | Alert Rules | alerts.go |
-| `/api/projections/config` | GET | Projections | projections.go |
-| `/api/projections/config` | PUT | Projections | projections.go |
-| `/api/projections/income` | POST | Projections | projections.go |
-| `/api/projections/income/{id}` | DELETE | Projections | projections.go |
-| `/api/projections/compute` | GET | Projections | projections.go |
+- **One handler file per feature domain:** Matches existing pattern (accounts.go, alerts.go, projections.go).
+- **Sync sub-modules:** transactions.go and recurring.go run as part of the sync pipeline.
+- **Shared eval package:** Alert operand evaluation is useful for goals too. Extract to avoid circular dependency between alerts and goals.
+- **One page per top-level nav item:** Matches current structure.
+- **Flat component structure:** Same as existing codebase.
 
-**Modified existing endpoints:**
-- `GET /api/summary` -- adds growth fields
-- `GET /api/accounts` -- adds display_name, crypto grouping
-- `GET /api/settings` / `POST /api/settings` -- adds SMTP config keys
+## Data Flow
 
-## Data Flow Changes
-
-### Current Sync Flow (v1.0)
+### Transaction Ingestion Flow
 
 ```
-Timer fires -> SyncOnce() -> SimpleFIN fetch -> upsert accounts -> insert snapshots -> update sync_log -> done
+SimpleFIN /accounts (without balances-only=1)
+    |
+    v
+simplefin.FetchAccountsWithHoldings()  -- already called, zero extra API calls
+    |
+    v
+AccountSet.Accounts[].Transactions      -- NEW: parse from JSON (currently dropped)
+    |
+    v
+sync.persistTransactions()              -- NEW: upsert to transactions table
+    |
+    v
+sync.categorizeNewTransactions()        -- NEW: apply category rules
+    |
+    v
+sync.detectRecurringPatterns()          -- NEW: batch pattern analysis
+    |
+    v
+alerts.EvaluateAll()                    -- existing: unchanged
 ```
 
-### New Sync Flow (v1.1 with alerts)
+### Spending Analytics Flow
 
 ```
-Timer fires -> SyncOnce() -> SimpleFIN fetch -> upsert accounts -> insert snapshots -> update sync_log
-                                                                                          |
-                                                                          alerts.EvaluateAll()
-                                                                                |
-                                                             for each enabled rule:
-                                                               evaluate expression
-                                                               compare to last_state
-                                                               if state changed:
-                                                                 insert alert_history
-                                                                 update rule.last_state
-                                                                 send email notification
+GET /api/spending?days=30&group_by=category
+    |
+    v
+SQL: GROUP BY COALESCE(user_category, category)
+     WHERE amount < 0 AND account hidden_at IS NULL
+    |
+    v
+JSON: { categories: [{name, total, count}], total, period }
+    |
+    v
+SpendingDonut + SpendingTrends components
 ```
 
-### Dashboard Load Flow (v1.1)
+### Goal Progress Flow
 
 ```
-Browser -> GET /api/summary (now includes growth %)
-        -> GET /api/accounts (now includes display_name, grouped crypto)
-        -> GET /api/balance-history?days=30 (unchanged)
+GET /api/goals
+    |
+    v
+For each goal: eval.EvaluateOperands(goal.operands)
+    -> progress_pct = current / target * 100
+    -> if target_date: days_remaining, on_track boolean
+    |
+    v
+JSON: [{ name, target, current, progress_pct, on_track }]
+    |
+    v
+GoalCard components with progress bars
 ```
 
-### New Page Flows
+### Cashflow Forecast Flow (Client-Side)
 
 ```
-Net Worth Drill-Down:
-  Browser -> GET /api/balance-history/detailed?days=365
-  Response: per-account time-series (not aggregated)
-  Frontend renders stacked area chart + per-account toggles
-
-Alerts:
-  Browser -> GET /api/alerts (list rules with state)
-  User creates rule -> POST /api/alerts (backend validates expression with expr.Compile)
-  Browser -> GET /api/alerts/{id}/history (view past triggers)
-
-Projections:
-  Browser -> GET /api/projections/config (load per-account APY, income allocations)
-  User edits -> PUT /api/projections/config
-  Browser -> GET /api/projections/compute?months=120 (10 years)
-  Response: month-by-month projected balances per account + total
+GET /api/cashflow/inputs
+    |
+    v
+JSON: { liquid_balance, recurring: [...], goals: [...] }
+    |
+    v
+useMemo(() => {
+  for each day in forecast_horizon:
+    balance += sum(recurring income due today)
+    balance -= sum(recurring expenses due today)
+    points.push({ date, balance })
+})
+    |
+    v
+CashflowChart with goal milestone markers
 ```
 
-## Recommended Build Order
+## Suggested Build Order
 
-The order is driven by dependency analysis and incremental value delivery:
-
-### Phase 1: Foundation (Account Renaming + Sync Diagnostics + Crypto Aggregation)
-
-Build order within phase:
-1. **Account Renaming** (Feature 2) -- First because it introduces `display_name` which all later features should use from day one. Migration + sync fix + settings UI + API endpoint.
-2. **Sync Diagnostics** (Feature 5) -- Simplest feature. Read-only endpoint over existing `sync_log` table. One new handler, one Settings UI section. Quick win.
-3. **Crypto Aggregation** (Feature 1) -- Modify accounts endpoint query logic. May or may not need a migration depending on approach. Touches one handler + PanelCard component.
-
-**Rationale:** These three are independent, low-risk, and establish the data foundation (display names) for later features. Sync diagnostics gives immediate operational value.
-
-### Phase 2: Insights (Growth Indicators + Net Worth Drill-Down)
-
-Build order within phase:
-4. **Growth Indicators** (Feature 3) -- Extends summary endpoint. Modify one handler + PanelCard. Small scope.
-5. **Net Worth Drill-Down** (Feature 4) -- New page with detailed charts. One new handler + one new page + new chart component. Medium scope. Benefits from display_name (Phase 1) and growth indicators (conceptual alignment).
-
-**Rationale:** Both features are read-only analytics over existing data. No new tables, no background processing, no external integrations. Natural to build together.
-
-### Phase 3: Alert System (Alert Rules + Email Notifications)
-
-Build order within phase:
-6. **Alert Rules + Email** (Feature 6) -- This is the most complex feature. Requires: new tables (migration), new Go package (`internal/alerts/`), expr-lang dependency, go-mail dependency, SMTP configuration in settings, sync hook, CRUD endpoints, frontend page. Build in sub-phases:
-   a. Alert rules CRUD (no evaluation) -- table + handlers + frontend
-   b. Expression evaluator with expr-lang -- environment setup, compilation, evaluation
-   c. Engine wiring into sync flow -- post-sync evaluation, state transition detection
-   d. Email notifier -- go-mail integration, SMTP config in settings
-
-**Rationale:** Isolated as its own phase because it introduces two new external dependencies, a new background processing hook, and is the only feature that sends data out (email). Needs focused testing.
-
-### Phase 4: Projections (Projected Net Worth + Income Modeling)
-
-Build order within phase:
-7. **Projections** (Feature 7) -- New tables (migration), new Go package (`internal/projections/`), new endpoints, new frontend page. Build in sub-phases:
-   a. Projection config CRUD -- tables + handlers + settings UI
-   b. Projection engine -- compound interest computation, income allocation
-   c. Projection page -- chart rendering, time horizon selector
-
-**Rationale:** This is the most standalone feature. It reads current balances but otherwise works with its own data (APY rates, income allocations). No dependency on alerts or other v1.1 features. Saves the most complex UI for last.
-
-### Dependency Graph
+Dependencies drive the order. You cannot analyze what you have not captured.
 
 ```
-Feature 2 (Account Renaming) ─────┬──> Feature 4 (Drill-Down)
-                                   ├──> Feature 6 (Alerts -- for display names in expressions)
-                                   └──> Feature 7 (Projections -- for display names in config)
-
-Feature 3 (Growth Indicators) ──> (nice-to-have context for Drill-Down, not blocking)
-
-Feature 1 (Crypto Aggregation) ──> (standalone)
-Feature 5 (Sync Diagnostics) ──> (standalone)
-Feature 6 (Alerts) ──> (standalone, but sync hook must be careful)
-Feature 7 (Projections) ──> (standalone)
+Phase 1: Transaction Ingestion (Feature 1)
+    |     Foundation -- spending, recurring, cashflow all need this
+    |
+    +---> Phase 2a: Data Export (Feature 4)            [independent]
+    |     Low effort, immediate user value, deferred from v1.1
+    |
+    +---> Phase 2b: Investment Performance (Feature 3) [independent]
+    |     Uses existing holdings, independent of transactions
+    |
+    +---> Phase 2c: Goal Tracking (Feature 5)          [independent]
+    |     Reuses alert operand engine, no transaction dep
+    |
+Phase 3: Spending Analytics (Feature 2)
+    |     Requires transactions + introduces categorization
+    |
+Phase 4: Recurring Detection (Feature 6)
+    |     Requires 60+ days of transaction history
+    |
+Phase 5: Cashflow Forecasting (Feature 7)
+          Capstone -- needs recurring patterns + balances + goals
 ```
 
-## Architectural Patterns to Follow
+**Rationale:**
+1. **Transaction Ingestion first** -- three features are blocked without it.
+2. **Export, Investment Performance, Goal Tracking are parallel** -- no dependencies between them. Export is low-effort; Investment Performance builds on existing holdings; Goal Tracking reuses the alert engine.
+3. **Spending Analytics before Recurring Detection** -- categorization infrastructure enriches recurring detection; recurring also needs sufficient history.
+4. **Cashflow Forecasting last** -- integrates everything. Building it before its inputs exist means rebuilding it later.
 
-### Pattern 1: Keep Handlers Thin
+## Scaling Considerations
 
-**What:** The existing codebase puts SQL queries directly in handlers. For v1.1, resist the urge to add more complexity there. For features with real business logic (alerts, projections), create dedicated packages.
+| Scale | Architecture Adjustments |
+|-------|--------------------------|
+| Single user (current) | No changes. SQLite handles everything trivially. |
+| 5 years (~90K transactions) | Ensure `LIMIT/OFFSET` on all list endpoints. Still fast with indexes. |
+| 10+ years | Spending aggregation may slow. Pre-compute monthly aggregates in a cache table updated during sync. |
 
-**When to use:** Any feature with logic beyond "query DB, serialize JSON."
+### Scaling Priorities
 
-**Trade-offs:** More files, but testable without HTTP. The alert evaluator and projection engine should be pure functions that accept data and return results.
+1. **First bottleneck:** Transaction table size. Mitigation: proper indexes + pagination.
+2. **Second bottleneck:** Spending GROUP BY over full table. Mitigation: monthly aggregate cache.
 
-**Example:**
-```go
-// internal/alerts/evaluator.go
-type Environment struct {
-    Liquid      float64
-    Savings     float64
-    Investments float64
-    NetWorth    float64
-    Accounts    map[string]float64 // display_name -> balance
-}
+For a single-user self-hosted app, these are years away.
 
-func Evaluate(expression string, env Environment) (bool, error) {
-    program, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
-    if err != nil {
-        return false, err
-    }
-    result, err := expr.Run(program, env)
-    if err != nil {
-        return false, err
-    }
-    return result.(bool), nil
-}
-```
+## Anti-Patterns
 
-### Pattern 2: Post-Sync Hook Pattern
+### Anti-Pattern 1: Fetching All Transactions Client-Side
 
-**What:** After sync completes successfully, run additional processing (alert evaluation). Do not embed alert logic inside sync -- use a callback/hook pattern.
+**What people do:** Return all transactions and paginate/filter in JavaScript.
+**Why it is wrong:** Transaction volume grows indefinitely. 50K+ rows to the browser is slow.
+**Do this instead:** Server-side pagination, filtering, and sorting via query params.
 
-**When to use:** When background processing needs to chain.
+### Anti-Pattern 2: Real-Time Recurring Detection
 
-**Example:**
-```go
-// In sync.go, after finalize:
-if failed == 0 || fetched > 0 {
-    if err := alerts.EvaluateAll(ctx, db); err != nil {
-        slog.Error("sync: alert evaluation failed", "err", err)
-        // Don't fail the sync for alert errors
-    }
-}
-```
+**What people do:** Run pattern detection on every page load.
+**Why it is wrong:** O(n) scan of all transactions on the read path. Results change only when new transactions arrive.
+**Do this instead:** Batch detection during daily sync. Store in `recurring_patterns`. Read path is a simple SELECT.
 
-### Pattern 3: Expression Validation at Write Time
+### Anti-Pattern 3: Client-Side Category Aggregation
 
-**What:** When the user saves an alert rule, compile the expression with `expr.Compile()` before storing it. Reject invalid expressions with a 400 error. This ensures every stored expression is guaranteed to be evaluable at runtime.
+**What people do:** Send raw transactions to frontend, aggregate with JavaScript reduce().
+**Why it is wrong:** Duplicates logic (export needs same aggregation). Wastes bandwidth.
+**Do this instead:** SQL GROUP BY in spending handler. Return pre-aggregated data. Matches existing pattern (GetSummary, GetNetWorth).
 
-**When to use:** Alert rule creation/update.
+### Anti-Pattern 4: Separate SimpleFIN Fetch for Transactions
 
-**Trade-offs:** Slightly slower write (compile step), but prevents runtime failures during sync.
+**What people do:** Second API call to SimpleFIN for transactions.
+**Why it is wrong:** 24 requests/day quota. The existing `FetchAccountsWithHoldings()` already receives transactions (balances-only is NOT set). Data is in the response, just not parsed.
+**Do this instead:** Add `Transactions` field to Go struct. Zero additional API calls.
 
-### Pattern 4: Decimal Strings for Money
+### Anti-Pattern 5: Float64 for Financial Amounts
 
-**What:** The existing codebase stores balances as TEXT (decimal strings) and uses `shopspring/decimal` for arithmetic. All new features must follow this convention. Never use float64 for money storage or comparison.
+**What people do:** Store amounts as REAL or use float64.
+**Why it is wrong:** Rounding errors. This project already uses `shopspring/decimal` and TEXT storage.
+**Do this instead:** Continue existing pattern. TEXT in SQLite, shopspring/decimal in Go, strings to frontend.
 
-**When to use:** Always, for any money-related field.
+### Anti-Pattern 6: Deep Category Hierarchies
 
-**Note for projections:** The projection engine can use float64 internally for compound interest math (acceptable for projections which are inherently approximate), but should format results back to 2-decimal strings for the API response.
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Fat Migration Files
-
-**What people do:** Put all schema changes in one migration file.
-
-**Why it's wrong:** Can't roll back individual features. If alert tables need adjustment, you have to redo projections tables too.
-
-**Do this instead:** One migration per logical feature. Account renaming = 000002. Alerts = 000003. Projections = 000004.
-
-### Anti-Pattern 2: Evaluating Expressions with string matching / regex
-
-**What people do:** Parse alert expressions like "liquid < 5000" with string splitting and if/else chains.
-
-**Why it's wrong:** Fragile, limited operators, hard to extend. Users will want compound expressions like `liquid < 5000 AND savings > 10000`.
-
-**Do this instead:** Use expr-lang/expr. It handles parsing, type checking, and safe evaluation. It prevents code injection and guarantees termination.
-
-### Anti-Pattern 3: Sending Email Synchronously in Sync Flow
-
-**What people do:** Send the email notification inline during sync, blocking the sync goroutine.
-
-**Why it's wrong:** SMTP can be slow (2-10 seconds). If the SMTP server is down, the entire sync blocks or fails.
-
-**Do this instead:** Alert evaluation and email sending should be best-effort. Log errors but never fail the sync. Consider sending email in a separate goroutine with a timeout, or at minimum wrap email sending with a 10-second context deadline.
-
-### Anti-Pattern 4: Overwriting display_name on Sync
-
-**What people do:** The upsert in `processAccount` uses `ON CONFLICT DO UPDATE SET name=excluded.name, ...` which would clobber `display_name` if included.
-
-**Why it's wrong:** User's carefully chosen display names disappear on next sync.
-
-**Do this instead:** Explicitly exclude `display_name` from the `ON CONFLICT DO UPDATE` clause. The sync should never touch user-configured fields.
+**What people do:** Build nested category trees (Food > Restaurants > Fast Food > McDonald's).
+**Why it is wrong:** Over-engineering for single user. Recursive CTEs for rollups. Users do not maintain deep trees.
+**Do this instead:** Single-level categories. "Food & Dining" is sufficient. Optional parent_id if two levels ever needed.
 
 ## Integration Points
 
-### External Services
+### SimpleFIN Protocol (Extended)
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| SimpleFIN Bridge | Existing -- no change for v1.1 | Unaffected by new features |
-| SMTP Server | New -- outbound email via go-mail | User-configured in Settings. Store credentials in `settings` table (encrypted at rest is out of scope for single-user self-hosted). Support standard SMTP (port 587/465) with STARTTLS. |
+| Data | Current Status | Change Needed |
+|------|---------------|---------------|
+| Account balances | Captured daily in `balance_snapshots` | None |
+| Holdings | Captured (replace-all) in `holdings` | Also insert into `holdings_snapshots` |
+| Transactions | **Available in response but ignored** | Add `Transaction` struct, persist in sync |
+| `extra.category` | Not captured | Map to `category` column |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| sync -> alerts | Direct function call after sync completion | `alerts.EvaluateAll(ctx, db)` called at end of `SyncOnce` |
-| alerts -> email | Direct function call within alert engine | `notifier.Send(ctx, rule, state)` with context deadline |
-| handlers -> alerts pkg | Import for expression validation | `alerts.Validate(expression)` called in POST/PUT handlers |
-| handlers -> projections pkg | Import for computation | `projections.Compute(config, months)` called in GET handler |
+| Sync -> Transaction storage | Direct SQL in same goroutine | Follow `persistHoldings` pattern |
+| Sync -> Recurring detection | Function call after all accounts | `detectRecurringPatterns(ctx, db)` |
+| Alert engine <-> Goal engine | Shared `internal/eval/` package | Extract operand evaluation |
+| Spending handler -> Categories | SQL COALESCE at query time | `COALESCE(user_category, category)` |
+| Cashflow page -> Multiple APIs | Parallel frontend fetch | `Promise.all([...])` |
 
-### New Go Dependencies
+### Navigation Restructuring
 
-| Package | Purpose | Import Path |
-|---------|---------|-------------|
-| expr-lang/expr | Safe expression evaluation for alert rules | `github.com/expr-lang/expr` |
-| go-mail | SMTP email sending | `github.com/wneessen/go-mail` |
+Adding 5 pages to existing 5 requires nav reorganization:
 
-No new frontend dependencies are needed. Recharts (already installed) handles all new chart types.
+```
+Overview:    Dashboard, Net Worth
+Money:       Transactions, Spending, Cashflow
+Investments: Holdings, Projections
+Planning:    Goals, Alerts
+System:      Settings
+```
+
+Plan this restructuring for the first phase that adds a new page.
 
 ## Sources
 
-- [expr-lang/expr](https://github.com/expr-lang/expr) -- Expression language for Go, safe evaluation, used by Google Cloud, Uber, ByteDance
-- [wneessen/go-mail](https://github.com/wneessen/go-mail) -- Modern Go email library, fork of stdlib net/smtp with extensions
-- [golang-migrate/migrate](https://github.com/golang-migrate/migrate) -- Already used in project for SQLite migrations
-- [shopspring/decimal](https://github.com/shopspring/decimal) -- Already used in project for money arithmetic
-- Existing codebase analysis (all files read directly from repository)
+- [SimpleFIN Protocol Specification](https://www.simplefin.org/protocol.html) -- Transaction fields: id, posted, amount, description, pending, extra
+- [SimpleFIN Protocol on GitHub](https://github.com/simplefin/simplefin.github.com/blob/master/protocol.md) -- Account includes `transactions` array
+- [SimpleFIN Developer Guide](https://beta-bridge.simplefin.org/info/developers) -- 24 req/day quota, 90-day window
+- [SQL Habit: Recurring Payment Detection](https://www.sqlhabit.com/blog/how-to-detect-recurring-payments-with-sql)
+- Existing codebase: `internal/simplefin/client.go`, `internal/sync/sync.go`, `internal/api/router.go`, all 6 migrations, `frontend/src/api/client.ts`
 
 ---
-*Architecture research for: v1.1 feature integration into existing Go/React/SQLite personal finance dashboard*
-*Researched: 2026-03-15*
+*Architecture research for: finance-visualizer v1.2 feature integration*
+*Researched: 2026-03-17*

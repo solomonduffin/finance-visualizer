@@ -1,188 +1,218 @@
 # Project Research Summary
 
-**Project:** Finance Visualizer v1.1
-**Domain:** Self-hosted personal finance dashboard — feature expansion of an existing v1.0 product
-**Researched:** 2026-03-15
+**Project:** Finance Visualizer v1.2
+**Domain:** Personal finance dashboard — transaction-based feature expansion
+**Researched:** 2026-03-17
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Finance Visualizer v1.1 adds 7 new capabilities to an existing, production Go/React/SQLite dashboard. The existing stack is validated and stable; only two net-new dependencies are required (go-mail for SMTP email, react-querybuilder for the alert rule builder UI). The project is well-positioned because the v1.0 codebase is clean, the existing data model already contains most of what the new features need, and the feature scope maps directly onto well-understood domain patterns from Empower, Monarch Money, and ProjectionLab. All 7 features were analyzed against the actual codebase, not just theoretical requirements.
+Finance Visualizer v1.2 is an incremental expansion of a working Go/React/SQLite personal finance dashboard that already handles balance tracking, net worth, alerts, and projections. The defining characteristic of this expansion is that the most important unlock — transaction data — requires no new external integration. SimpleFIN already returns transaction arrays in its API response; the current Go client simply drops them during JSON decoding because no `Transactions` field exists on the `Account` struct. Enabling transaction capture is a contained change to `internal/simplefin/client.go` and `internal/sync/sync.go`, and it unblocks every transaction-dependent feature (spending analytics, categorization, recurring detection, cashflow forecasting). This means the v1.2 feature set is largely a question of build order, not feasibility.
 
-The recommended build order starts with account renaming and soft-delete safety (low-risk, high-value, establishes the data foundation), moves through sync diagnostics and growth indicators (quick wins on existing data), then crypto aggregation and net worth drill-down (analytics expansion), and finishes with the alert system and projection engine (complex new subsystems that benefit from the earlier groundwork). No feature requires a full architectural overhaul — each integrates as an extension of the existing handler and sync patterns.
+The recommended approach is to layer features in dependency order: establish transaction ingestion first, then build analytics on top of that data, then layer planning features on top of analytics. Three features are independent of transactions — data export for balance history, investment performance tracking, and goal tracking — and can be built in parallel once the transaction foundation exists. The stack requires minimal additions: `encoding/csv` (stdlib, zero install), and four small frontend libraries (`@tanstack/react-table`, `date-fns`, `sonner`, `clsx`) totaling ~45KB gzipped. The existing stack handles all charting, state management, and routing without additions.
 
-The dominant risks are data integrity and security. The existing hard-delete of stale accounts will destroy user-configured data (display names, APY settings, alert rules) on any SimpleFIN outage; this must be converted to a soft-delete before any user-owned per-account metadata is introduced. Expression injection in alert rules is a critical security risk (reference: CVE-2025-68613, CVSS 9.9) that is fully prevented by storing alert conditions as structured JSON rather than free-text expressions. SMTP credentials must never be returned in API responses. All three risks are preventable by design decisions made at schema time.
-
----
+The primary risks are deduplication integrity and data model discipline. Transaction deduplication is harder than it appears: SimpleFIN transaction IDs are not stable across pending-to-cleared transitions, and real-world integrations (Actual Budget, Firefly III) have documented duplicate bugs. The second risk is architectural discipline around the balance model — once transactions exist, there is pressure to derive balances from transaction sums, which will produce wrong numbers because SimpleFIN only provides a 90-day rolling window. Balance snapshots must remain the single source of truth; transactions are supplementary. Both risks must be resolved in the very first transaction phase before analytics are built on top.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The existing stack (Go 1.25, go-chi, React 19, TypeScript 5.9, Tailwind v4, SQLite via modernc.org/sqlite, recharts 3.x, shopspring/decimal, JWT auth, Docker, Nginx) requires exactly two additions. `github.com/wneessen/go-mail v0.7.1` handles SMTP email for alert notifications — it is the only actively maintained Go SMTP library with proper STARTTLS support, required for Protonmail Bridge integration. `react-querybuilder v8.14.0` provides the alert rule expression builder UI; it explicitly supports React 19, ships unstyled (Tailwind-compatible), and eliminates 2-4 weeks of custom UI work. All projection math uses the existing `shopspring/decimal` with iterative compounding (no `math.Pow`). All new charts use the existing `recharts` (dashed lines via `strokeDasharray`). The `expr-lang/expr` library handles safe alert expression evaluation on the Go side.
+The existing stack requires no changes for core functionality. The additions are small and targeted. Backend needs only `encoding/csv` (already in Go stdlib) for CSV export. Frontend needs `@tanstack/react-table` for sortable/filterable transaction lists, `date-fns` for date range logic and period comparisons, `sonner` for toast notifications, and `clsx` for conditional CSS composition. No state management library is needed — React Context handles the single-user scale. No new charting library is needed — Recharts 3.8.0 (already in use) supports bar charts, pie charts, area charts, and composed charts, covering all planned analytics views.
 
-**Core new technologies:**
-- `github.com/wneessen/go-mail v0.7.1`: SMTP sending — only maintained Go SMTP library with STARTTLS; required for Protonmail Bridge
-- `react-querybuilder v8.14.0`: Alert rule builder UI — React 19 native, Tailwind-compatible, eliminates custom operator/group-nesting parser work
-- `github.com/expr-lang/expr`: Alert expression evaluation — sandboxed, prevents injection, used by Google Cloud/Uber in production
+**Core technologies (additions only):**
+- `encoding/csv` (stdlib): CSV export — zero-dependency streaming writer, no install needed
+- `@tanstack/react-table ^8.21.3`: Transaction list table — headless, Tailwind-compatible, sort/filter/pagination built-in
+- `date-fns ^4.1.0`: Date manipulation — tree-shakeable, functional API, needed for month boundaries and period comparisons
+- `sonner ^2.0.7`: Toast notifications — 5KB, React 19 compatible, zero hooks setup
+- `clsx ^2.1.1`: Conditional class composition — 239 bytes, incremental adoption
 
-**No new library needed for:** financial projections (use existing shopspring/decimal with iterative monthly compounding), new chart types (recharts ComposedChart + `strokeDasharray` covers all cases), SimpleFIN holdings (existing net/http client, just add struct fields and remove `balances-only=1`).
+**Critical stack finding:** The SimpleFIN client already receives transaction data in every `FetchAccountsWithHoldings()` response because `balances-only` is NOT set in that call. Adding a `Transactions []Transaction` field to the Go `Account` struct is sufficient to begin capturing transaction data. Zero additional API calls are needed, and the existing 24-request/day rate limit is unaffected.
 
 ### Expected Features
 
+All feature dependencies flow from transactions as the root. Goal tracking and investment performance tracking are independent branches that can be built in parallel.
+
 **Must have (table stakes):**
-- Account renaming (`display_name` column) — every finance app supports this; institutional names like "SAVINGS PLUS ACCOUNT" are cryptic
-- Growth rate indicators (+2.3% this month badges on panel cards) — a dashboard without trend signals feels static
-- Sync failure diagnostics — the `sync_log` table already captures everything; purely a new endpoint and frontend display
-- Crypto aggregation by institution — multiple Coinbase wallets should appear as one grouped line in the Investments panel
+- Transaction list view — users see balance changes but cannot see why; every competitor shows transactions
+- Data export (CSV) — explicitly deferred from v1.1; users expect data portability
+- Transaction search — once transactions exist, search is expected; FTS5 already compiled into the SQLite driver
+- Toast/notification feedback — operations like sync, export, settings save currently have no visual feedback
 
-**Should have (competitive differentiators):**
-- Net worth drill-down page — turns a single number into a historical insight view; no self-hosted tool does this well
-- Alert rules with email notifications — expression-based threshold alerts; no self-hosted finance dashboard currently offers this
-- Projected net worth with income modeling — deterministic compound interest projection; ProjectionLab charges $100/year for equivalent functionality
+**Should have (differentiators):**
+- Transaction categorization (rule-based) — turns raw transactions into spending insights; keyword rules + user overrides, no ML needed
+- Spending analytics (monthly category breakdown) — shows where money goes; SQL aggregation + Recharts bar charts
+- Recurring transaction detection — surfaces subscription/bill awareness; batch SQL detection during sync
+- Goal tracking — save toward specific targets; reuses the existing alert operand engine for account selection
+- Investment performance tracking — returns on holdings over time; requires `holdings_snapshots` table to preserve history
 
-**Explicitly deferred (anti-features):**
-- Real-time crypto price feeds — conflicts with SimpleFIN daily sync cadence; adds external API dependency
-- Monte Carlo simulation — dedicated-product scope (ProjectionLab territory); deterministic projections are sufficient and honest
-- Holdings-level investment detail — SimpleFIN `balances-only=1` suppresses holdings; availability varies by institution; building UI around inconsistent data creates a half-broken feature
-- SMS notifications — requires paid third-party service; email + email-to-SMS gateway is the right answer for self-hosted
-
-**Feature dependency order matters:** Account renaming must come first. It introduces `display_name` which crypto aggregation, alert rule displays, and projection account config all reference from day one. Building it last means retrofitting display names into three already-shipped systems.
+**Defer to v1.3+:**
+- Multi-currency support — large blast radius, touches every balance calculation and chart
+- Budget tracking (monthly limits per category) — depends on categorization; useful but complex
+- Cashflow forecasting — capstone feature, requires 60+ days of recurring pattern history to be meaningful
+- OFX/QFX import for historical backfill — useful but not critical for launch
+- Year-over-year spending comparison — needs >12 months of transaction data to be meaningful
 
 ### Architecture Approach
 
-All 7 features integrate into the existing handler-per-resource architecture without requiring a service layer refactor. Features with real business logic (alerts, projections) get dedicated packages (`internal/alerts/`, `internal/projections/`) with pure functions — testable without HTTP. The sync flow gains a post-sync hook that calls `alerts.EvaluateAll()` after each successful sync, outside the sync mutex, so SMTP latency never blocks sync completion. Three new database migrations (000002 through 000004) introduce `display_name` and `hidden_at`, alert tables, and projection tables respectively. Thirteen new API endpoints are added; three existing endpoints are extended.
+The existing architecture is a clean pattern worth preserving: one handler file per feature domain, raw SQL with `database/sql`, React pages that fetch on mount with loading/error states, and a sync pipeline (`SyncOnce`) that serializes all writes behind a mutex. New features slot into this pattern cleanly. The critical structural addition is the sync pipeline extension: `processAccount -> persistHoldings -> persistTransactions -> (post-all-accounts) detectRecurringPatterns -> EvaluateAll`. An `internal/eval/` package should be extracted to share operand evaluation logic between alerts and goals, avoiding duplication and circular imports.
 
-**Major new components:**
-1. `internal/alerts/` (NEW) — evaluator (expr-lang sandboxed expressions), engine (NORMAL/TRIGGERED state machine, state transitions), notifier (go-mail SMTP with context deadline)
-2. `internal/projections/` (NEW) — compound interest engine using shopspring/decimal iterative compounding (360 multiplications for 30-year monthly — microseconds, not a concern), income allocation
-3. Migrations 000002-000004 (NEW) — `display_name`/`hidden_at` on accounts, `alert_rules`/`alert_history` tables, `projection_config`/`income_allocations` tables
-4. Four new frontend pages — NetWorthDrillDown, Alerts, Projections, plus Settings extensions for sync diagnostics, SMTP config, and account names
-5. Sync hook (MODIFY `sync.go`) — calls `alerts.EvaluateAll()` after sync, outside mutex; SMTP failure is logged but never fails the sync
-
-**Key patterns to follow:**
-- Soft-delete accounts with `hidden_at DATETIME` rather than hard-deleting — prerequisite for all user-owned per-account data
-- Alert conditions stored as structured JSON, not free-text — validated with `expr.Compile()` at write time, evaluated at sync time
-- `COALESCE(display_name, name)` in every query that returns account names
-- `shopspring/decimal` for all financial arithmetic — no `float64` anywhere in the financial pipeline
-- Aggregation keyed on `org_slug` (stable domain-like identifier), not `org_name` (human-readable, can change between syncs)
+**Major components (new):**
+1. `internal/simplefin/client.go` (modified) — add `Transaction` struct and `Transactions []Transaction` to `Account`; this is the zero-API-call transaction unlock
+2. `internal/sync/transactions.go` (new) — `persistTransactions()` using upsert (not DELETE+INSERT) because SimpleFIN transactions are a rolling window, not a full replacement set
+3. `internal/sync/recurring.go` (new) — `detectRecurringPatterns()` batch-run after all accounts are processed, stored in `recurring_patterns` table
+4. `internal/eval/eval.go` (new) — extracted from `internal/alerts/`, shared by both alert evaluation and goal progress calculation
+5. `internal/api/handlers/export.go` (new) — stateless streaming CSV handlers for balances, transactions, holdings
+6. Five new frontend pages: `Transactions`, `Spending`, `Investments`, `Goals`, `Cashflow`
+7. Navigation restructuring into groups (Overview, Money, Investments, Planning, System) — required when adding 5 pages to existing 5
 
 ### Critical Pitfalls
 
-1. **Stale account hard-delete destroys user data** — The existing `removeStaleAccounts()` permanently deletes accounts that disappear from SimpleFIN, including all `balance_snapshots`. With v1.1 user-owned metadata, a temporary SimpleFIN outage erases display names, alert rule references, and APY settings permanently. Fix before any user-owned data is introduced: add `hidden_at DATETIME` column and convert to soft-delete. Auto-restore when account reappears on subsequent sync. Manual "permanently delete" in settings.
+1. **Transaction deduplication failure** — SimpleFIN transaction IDs are not stable across pending-to-cleared transitions. Use `UNIQUE(account_id, external_id)` as primary dedup, but add a secondary fuzzy-match layer (same account + date ±1 day + same amount) to catch ID changes. Store `pending` boolean and UPDATE (not INSERT) when a pending transaction clears. Must be solved in the first transaction phase — bolting on dedup later requires a cleanup migration against potentially corrupted data.
 
-2. **Expression injection in alert rules** — Using a general-purpose expression engine for alert evaluation exposes `JWT_SECRET`, `PASSWORD_HASH`, and SMTP credentials via `os.Getenv()`. CVE-2025-68613 in n8n (CVSS 9.9) is exactly this attack pattern. Fix: store conditions as structured JSON `{"metric": "liquid", "operator": "<", "value": 5000}` and evaluate with a Go switch statement or the sandboxed `expr-lang/expr`. Never accept free-text expressions from users.
+2. **Balance model corruption** — Once transactions exist, the temptation to derive balances from transaction sums is strong and wrong. SimpleFIN provides only a 90-day rolling window; a transaction sum will never equal the authoritative balance. `balance_snapshots` must remain the single source of truth. Enforce this in code comments and schema design; add a reconciliation warning log but never a balance override.
 
-3. **Alert flooding from threshold oscillation** — A balance hovering at the alert threshold sends an email on every sync cycle where the condition is true. Fix: implement a per-rule state machine (NORMAL → TRIGGERED, TRIGGERED → NORMAL) that fires exactly once per threshold crossing and once per recovery. Establish baseline on rule creation so a rule already in a triggered state does not fire immediately when saved.
+3. **SimpleFIN 90-day window creates permanent data gaps** — Transaction history starts from first sync and never reaches further back. All analytics must be designed around "data available since [first sync date]" rather than arbitrary history depth. The analytics UI must show explicit date range indicators and graceful empty states for the first weeks of operation.
 
-4. **SMTP credentials exposed via API or logs** — The `settings` table pattern makes it tempting to add `smtp_pass` as a key-value pair and return it in `GET /api/settings`. Fix: never return the SMTP password in API responses (return `smtp_configured: true/false` only). Store credentials as environment variables in `docker-compose.prod.yml` matching the existing `JWT_SECRET`/`PASSWORD_HASH` pattern. Never pass password to `slog` fields.
+4. **Categorization accuracy ceiling without a feedback loop** — Rule-based categorization achieves 70-85% accuracy at best. The `COALESCE(user_category, auto_category)` pattern (already used for `display_name` in accounts) is the right model. "Apply rule to all matching past transactions" is required for the feature to feel correct; without it, users spend hours on manual correction and abandon the feature.
 
-5. **SQLite migrations failing on populated tables** — New `NOT NULL` columns without a `DEFAULT` fail against the v1.0 production database. A dirty migration state prevents the application from starting. Fix: every `ALTER TABLE ADD COLUMN` must include a `DEFAULT`. Test all migrations against a database seeded with v1.0 realistic data, not just empty `:memory:` test databases.
-
----
+5. **Schema migration risk on a live database** — Six migrations exist with real user data. Each new migration must: use `CREATE TABLE IF NOT EXISTS`, have a corresponding down migration, be tested against a copy of the production database, and be preceded by an automatic pre-migration backup. The transaction phase adds the most schema surface area and is the highest risk.
 
 ## Implications for Roadmap
 
-Based on combined research, the natural phase structure is driven by dependency chains, not arbitrary grouping. Account renaming is the keystone — every other feature that stores per-account user configuration is blocked until `display_name` exists and soft-delete is in place to protect it.
+Based on the dependency graph from ARCHITECTURE.md and the build order confirmed in both FEATURES.md and ARCHITECTURE.md, the following phase structure is clear and well-motivated.
 
-### Phase 1: Data Foundation
-**Rationale:** Two schema changes must land before any user-owned data is introduced. Soft-delete must exist before `display_name` (otherwise a SimpleFIN outage on day two destroys the user's renamed accounts). `display_name` must exist before alerts and projections reference it.
-**Delivers:** Accounts survive SimpleFIN outages with all config intact; users can rename accounts to human-readable names; all new features have a stable `display_name` to reference from day one.
-**Addresses:** Account Renaming (table stakes)
-**Avoids:** Stale account hard-delete destroying user data (Pitfall 1); SQLite migration failures on populated tables (Pitfall 5)
-**Research flag:** Standard patterns — SQLite `ALTER TABLE ADD COLUMN` and soft-delete are well-established. No phase research needed.
+### Phase 1: Transaction Foundation
 
-### Phase 2: Operational Quick Wins
-**Rationale:** Sync diagnostics and growth indicators are independent features with zero external dependencies. Both read from tables that already exist and already have the necessary data. High visible value for minimal risk — good early-phase momentum.
-**Delivers:** Users can diagnose expired SimpleFIN tokens from the Settings UI; panel cards show "+2.3% this month" trend badges.
-**Addresses:** Sync Failure Diagnostics (table stakes), Growth Rate Indicators (table stakes)
-**Avoids:** SimpleFIN credential leakage in sync error text — sanitize `error_text` before storing (Pitfall 4); growth indicator division-by-zero and misleading percentages on new/credit-card accounts (Pitfall 8)
-**Research flag:** Standard patterns. No phase research needed.
+**Rationale:** Three planned features are entirely blocked without this. Starting with anything else means building analytics without data. This is the single most load-bearing change in v1.2.
 
-### Phase 3: Analytics Expansion
-**Rationale:** Crypto aggregation and net worth drill-down both operate exclusively on existing snapshot data with no new background processing or external integrations. Lower risk profile than Phases 4-5.
-**Delivers:** Coinbase wallets grouped into one combined investment line with expand-to-detail; dedicated `/net-worth` page with historical stacked area chart and time range picker.
-**Addresses:** Crypto Aggregation (table stakes), Net Worth Drill-Down (differentiator)
-**Avoids:** Aggregation merging accounts of different types at the same institution by keying on `(org_slug, account_type)` (Pitfall 5); `org_name` instability breaking grouping by using `org_slug` as the stable key (Pitfall 6); drill-down performance with 1000+ data points via server-side resolution parameter
-**Research flag:** Validate `org_slug` stability across institutions in practice — the SimpleFIN spec guarantees it is a domain-like identifier but real-world behavior may vary.
+**Delivers:** Full transaction ingestion pipeline, `transactions` table with proper dedup, `GET /api/transactions` with pagination, `GET /api/transactions/search` using FTS5, `pages/Transactions.tsx` with filters, and navigation restructuring for the new page.
 
-### Phase 4: Alert System
-**Rationale:** The alert system is the most architecturally novel addition — new package, new background hook, external SMTP dependency, state machine, expression evaluator. Isolated as its own phase to focus testing effort. Account renaming (Phase 1) must be complete so alert expressions can reference display names.
-**Delivers:** User-defined threshold alerts that fire once on crossing and once on recovery, delivered via email to any SMTP-configured address (Protonmail Bridge or standard SMTP).
-**Addresses:** Alert Rules with Email Notifications (differentiator)
-**Avoids:** Expression injection via structured JSON storage and expr-lang sandboxing (Pitfall 2); alert flooding via state machine (Pitfall 3); SMTP credential exposure via environment variable pattern and masked API responses (Pitfall 10)
-**Research flag:** Phase research recommended — Protonmail Bridge Docker service-to-service networking; `expr-lang/expr` sandboxing scope vs. `react-querybuilder` JSON output format alignment.
+**Addresses:** "Transaction list view" and "Transaction search" from table stakes.
 
-### Phase 5: Projection Engine
-**Rationale:** The projection engine is the most standalone feature — it reads current balances and its own config tables with no dependency on alerts or other v1.1 features. Saved for last because it requires the most complex frontend configuration UI. Account renaming (Phase 1) ensures the projection config table shows human-readable names.
-**Delivers:** Forward-looking net worth projection page with per-account APY settings, reinvestment toggles (compound vs. simple), income allocation modeling, and time horizon selector (1y/5y/10y/30y).
-**Addresses:** Projected Net Worth with Income Modeling (differentiator)
-**Avoids:** float64 precision errors in 30-year projections via iterative shopspring/decimal compounding — never use `math.Pow` (Pitfall 7); misleading projections presented as guarantees via explicit "Estimates" disclaimers and dashed chart lines
-**Research flag:** Standard patterns — iterative compound interest math is unambiguous. No phase research needed.
+**Avoids:** Deduplication failures, balance model corruption, and rate limit overrun (single consolidated sync call).
+
+**Research flag:** SKIP — patterns are fully specified in ARCHITECTURE.md with exact SQL schema, struct changes, and data flow. Standard Go upsert pattern. No additional research needed.
+
+### Phase 2: Data Export + Toast Notifications
+
+**Rationale:** Data export was explicitly deferred from v1.1 and is low-effort (stateless streaming, no new tables). Toast notifications improve the entire app, including Phase 1's sync feedback. Both are independent of transaction analytics and ship usable value immediately after Phase 1.
+
+**Delivers:** `GET /api/export/{balances,transactions,holdings,all}` with streaming CSV, `ExportSection` component in Settings, and Sonner toast system wired to sync/export/settings operations.
+
+**Addresses:** "Data export (CSV)" and "Toast/notification feedback" from table stakes.
+
+**Avoids:** Export security pitfalls (JWT auth required on all endpoints, no on-disk file persistence, settings table excluded from export).
+
+**Research flag:** SKIP — CSV export uses stdlib, documented streaming pattern in ARCHITECTURE.md. Sonner is trivial setup.
+
+### Phase 3: Investment Performance Tracking
+
+**Rationale:** Independent of transactions; builds on existing holdings data. Requires adding `holdings_snapshots` table to preserve history that currently gets overwritten on each sync (`persistHoldings` does DELETE+INSERT today). Delivers meaningful value for investment-heavy users before spending analytics is complete.
+
+**Delivers:** `holdings_snapshots` table (migration 000009), modified `persistHoldings()` that also upserts snapshots, `GET /api/holdings` and `/api/holdings/history`, `pages/Investments.tsx` with `HoldingsTable` and `HoldingChart`.
+
+**Addresses:** Investment performance tracking from differentiator features.
+
+**Avoids:** Contribution-conflation pitfall — display "Balance change" not "Return" unless manual cash flows are tracked; label must be honest about methodology.
+
+**Research flag:** SKIP — architecture fully specified. The only design decision (simple return vs. TWR) is resolved: use balance change with clear labeling, flag large single-day jumps as likely contributions.
+
+### Phase 4: Goal Tracking
+
+**Rationale:** Independent of transactions; reuses the alert operand engine for account selection. Delivers forward-looking value while transaction history accumulates. The `internal/eval/` extraction happens here, which benefits the existing alerts feature too.
+
+**Delivers:** `goals` table (migration 000010), `internal/eval/` package extracted from alerts, CRUD at `/api/goals`, `pages/Goals.tsx` with `GoalCard` progress rings and `GoalForm` (reuses operand selector from `AlertRuleForm`).
+
+**Addresses:** Goal tracking from differentiator features.
+
+**Avoids:** "Goal set and forgotten" UX pitfall — progress shown on dashboard, alert trigger when goal is reached (reuses existing alert engine).
+
+**Research flag:** SKIP — operand engine already built, extraction is refactoring. Goal schema fully specified in ARCHITECTURE.md.
+
+### Phase 5: Spending Analytics + Categorization
+
+**Rationale:** Requires Phase 1 transactions. Highest-value analytics phase. Categorization infrastructure must precede charts because charts depend on categorized data. Server-side aggregation (`SQL GROUP BY`) is the correct pattern here — consistent with existing `GetSummary`/`GetNetWorth` handlers, avoids sending raw transaction volumes to the browser.
+
+**Delivers:** `category_rules` and `categories` tables (migration 000008), `COALESCE(user_category, auto_category)` pattern wired throughout, `GET /api/spending` and `/spending/trends`, `pages/Spending.tsx` with `SpendingDonut` (Recharts PieChart) and `SpendingTrends` (Recharts stacked BarChart), `CategoryManager` for rule CRUD.
+
+**Addresses:** Transaction categorization and spending analytics from differentiator features.
+
+**Avoids:** Categorization accuracy pitfall — user overrides persist across re-syncs, "apply to all matching" bulk action required before shipping.
+
+**Research flag:** SKIP — SQL aggregation patterns specified, category data model specified, all charting done with existing Recharts.
+
+### Phase 6: Recurring Detection + Cashflow Forecasting
+
+**Rationale:** Recurring detection requires 60+ days of transaction history (from Phase 1). Cashflow forecasting is the capstone — it consumes recurring patterns, balance data, and goals together. Build together because the forecast is the primary value delivery; recurring detection alone is table stakes for the forecast.
+
+**Delivers:** `recurring_patterns` table (migration 000011), `detectRecurringPatterns()` batch-run during sync, `GET/PATCH /api/recurring`, `GET /api/cashflow/inputs`, `pages/Cashflow.tsx` with interactive `CashflowChart` (Recharts AreaChart) and `CashflowAssumptions` toggle component.
+
+**Addresses:** Recurring transaction detection and cashflow forecasting from differentiator features. Dashboard summary widgets (spending badge, upcoming bills) as part of this phase.
+
+**Avoids:** Real-time detection anti-pattern — detection runs once per sync and stores results; the read path is a simple SELECT against `recurring_patterns`.
+
+**Research flag:** NEEDS RESEARCH — the merchant description normalization algorithm (stripping variable reference numbers, dates, transaction IDs) is described conceptually but not implemented. Research how Actual Budget and similar tools normalize merchant names. Plan for a tuning pass after the first 60 days of real transaction data.
 
 ### Phase Ordering Rationale
 
-- **Soft-delete before display_name before everything else:** The dependency chain is `hidden_at` → `display_name` → alerts/projections. Reversing this order means retrofitting data safety into features already live with real user data.
-- **Quick wins in Phase 2:** Sync diagnostics and growth indicators deliver immediate user value with zero external dependencies. Building them early establishes momentum before the high-complexity phases.
-- **Analytics before alerts:** Crypto aggregation and drill-down are read-only analytics with no background processing or external integrations. Lower risk profile — ship these before introducing the SMTP subsystem.
-- **Alerts before projections:** The alert system introduces the most new moving parts (background hook, state machine, email). Completing it in isolation keeps the risk contained. Projections in Phase 5 are computation-intensive but architecturally simpler.
-- **No feature blocked on another after Phase 1:** Once `display_name` and soft-delete are in place, Phases 2-5 are theoretically order-independent from a data perspective — the phase ordering above is risk-driven, not dependency-driven beyond Phase 1.
+- Phases 1-4 are ordered by the transaction dependency: foundation first, then independent value-adds that can be built while history accumulates toward the 60-day recurring detection threshold.
+- Phase 5 is gated on having enough transaction data to make categorization meaningful (30+ days); starting after Phase 1 ships means real data exists by the time Phase 5 launches.
+- Phase 6 is explicitly last because recurring detection requires 60+ days of history. Building it sooner means shipping a page that shows "no patterns detected yet" for the first two months.
+- Navigation restructuring (grouping into Overview/Money/Investments/Planning/System) should happen in Phase 1 when the first new page (`Transactions`) is added, not retrofitted later when 3-4 more pages exist.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 4 (Alert System):** Protonmail Bridge Docker networking configuration for service-to-service SMTP; `expr-lang/expr` sandboxing scope and whether it exposes environment variables; `react-querybuilder` JSON output format and whether it maps cleanly to the Go evaluator's expected input.
+Phases needing deeper research during planning:
+- **Phase 6 (Recurring Detection):** Description normalization algorithm needs validation against real transaction data. Research how Actual Budget normalizes merchant names before pattern matching. Plan a tuning phase after initial deployment.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (Data Foundation):** SQLite `ALTER TABLE ADD COLUMN` with DEFAULT and soft-delete are universally documented patterns.
-- **Phase 2 (Quick Wins):** Both features are read-only over existing tables with established query patterns.
-- **Phase 3 (Analytics):** Recharts stacked area charts and server-side resolution control are well-documented.
-- **Phase 5 (Projections):** Iterative compound interest with shopspring/decimal is mathematically unambiguous; the reference answer (30-year $100k at 7% = $761,225.50) is a reliable verification test.
-
----
+- **Phase 1:** Architecture fully specified with exact SQL, Go structs, and data flow.
+- **Phase 2:** Stdlib CSV streaming + one-line Sonner setup.
+- **Phase 3:** Fully specified in ARCHITECTURE.md.
+- **Phase 4:** Refactoring of existing alert engine, no new patterns.
+- **Phase 5:** SQL GROUP BY + existing Recharts, established patterns.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All libraries verified against official sources; version compatibility confirmed; only 2 net-new dependencies identified |
-| Features | HIGH | Codebase fully inspected; existing schema documented; competitor analysis cross-referenced; feature dependency graph validated against code |
-| Architecture | HIGH | All 7 features analyzed file-by-file; exact handler/package/migration mapping provided; no speculative components |
-| Pitfalls | HIGH | Based on direct codebase analysis plus CVE research (CVE-2025-68613) and real-world precedent (Actual Budget PR #2836 for null org_slug) |
+| Stack | HIGH | Existing stack verified from running codebase. Additions verified via npm/pkg.go.dev with exact versions. Alternatives explicitly considered and rejected with rationale. |
+| Features | MEDIUM-HIGH | Feature expectations validated against competitor analysis and SimpleFIN protocol spec. Transaction availability confirmed from protocol documentation. Complexity estimates are informed guesses. |
+| Architecture | HIGH | Existing codebase fully inspected. SimpleFIN protocol verified. SQL schemas, Go structs, data flows, and file structure fully specified. Exact migration numbers assigned. |
+| Pitfalls | HIGH | Sourced from real-world issues in Actual Budget and Firefly III SimpleFIN integrations. shopspring/decimal edge cases verified from package docs. SQLite WAL behavior verified from SQLite documentation. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Protonmail Bridge Docker networking:** The Bridge Docker container (`shenxn/protonmail-bridge`) is community-maintained, not officially by Proton. The exact Docker Compose service-to-service SMTP hostname and whether the container requires interactive setup must be validated during Phase 4 planning before committing to the docker-compose pattern.
-- **expr-lang vs. react-querybuilder JSON format alignment:** ARCHITECTURE.md recommends `expr-lang/expr` for Go-side evaluation and `react-querybuilder` for the frontend builder. The exact JSON format react-querybuilder exports needs confirmation that it maps cleanly to what expr-lang expects, or a translation layer must be planned in Phase 4.
-- **SimpleFIN holdings data availability by institution:** The protocol supports holdings (confirmed via spec), but `balances-only=1` in the existing client suppresses them. Real-world availability varies by institution. Do not build the investment drill-down around holdings data for v1.1; account-level balances are reliable.
-- **Credit card balance sign semantics in growth indicators:** Going from -$500 to -$200 is a $300 improvement, but naive `(current-previous)/previous*100` gives -60%. Phase 2 must explicitly address sign handling for negative-balance accounts.
-
----
+- **Recurring detection normalization:** The algorithm for normalizing merchant names (stripping variable reference numbers, dates, transaction IDs) is described conceptually but not implemented. It will require iteration against real transaction descriptions once syncing starts. Budget for a tuning pass after first 60 days.
+- **SimpleFIN transaction ID stability per institution:** The deduplication strategy accounts for ID instability, but actual behavior varies by financial institution. The user's specific banks may or may not exhibit pending-to-cleared ID changes. Monitor for duplicates in the first weeks after Phase 1 ships and tune the fuzzy matcher if needed.
+- **Investment cash flow tracking:** If the user wants true return calculations (not just balance change), manual contribution entry is needed. The current design defers this. If the user relies on ProjectionLab for serious investment analysis (noted in codebase comments), balance-change display may be sufficient and the gap may never matter.
+- **Navigation restructuring UX:** Adding 5 pages to an existing 5-page app requires grouped navigation. The restructuring is described in ARCHITECTURE.md but the exact grouping should be confirmed with the user before Phase 1 ships the first new page.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase analysis — all Go handlers, sync logic, schema, frontend components (read from repository during research)
-- [wneessen/go-mail GitHub releases](https://github.com/wneessen/go-mail/releases) — v0.7.1, Go 1.24+ requirement, CVE-2025-59937 security fix
-- [go-mail pkg.go.dev](https://pkg.go.dev/github.com/wneessen/go-mail) — API reference, auth methods, STARTTLS support
-- [react-querybuilder npm](https://www.npmjs.com/package/react-querybuilder) — v8.14.0, React 19 support confirmed
-- [react-querybuilder docs](https://react-querybuilder.js.org/) — TypeScript reference, custom fields/operators, JSON export format
-- [SimpleFIN Protocol Specification](https://www.simplefin.org/protocol.html) — holdings schema, account fields, org.id semantics
-- [SimpleFIN GitHub protocol.md](https://github.com/simplefin/simplefin.github.com/blob/master/protocol.md) — authoritative spec source
-- [shopspring/decimal pkg.go.dev](https://pkg.go.dev/github.com/shopspring/decimal) — Pow fractional exponent limitation, PowWithPrecision workaround
-- [expr-lang/expr](https://github.com/expr-lang/expr) — sandboxed expression evaluation for Go, used by Google Cloud/Uber/ByteDance
+- [SimpleFIN Protocol Specification](https://www.simplefin.org/protocol.html) — transaction fields, rate limits, 90-day window
+- [SimpleFIN Developer Guide](https://beta-bridge.simplefin.org/info/developers) — 24 req/day quota, daily update cadence
+- Existing codebase: `internal/simplefin/client.go`, `internal/sync/sync.go`, `internal/api/router.go`, migrations 000001-000006, `frontend/src/api/client.ts`
+- [encoding/csv](https://pkg.go.dev/encoding/csv) — Go stdlib CSV package
+- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — FTS5 compiled-in confirmed
+- [shopspring/decimal](https://pkg.go.dev/github.com/shopspring/decimal) — division-by-zero panic behavior verified
 
 ### Secondary (MEDIUM confidence)
-- [CVE-2025-68613: RCE via Expression Injection in n8n](https://nvd.nist.gov/vuln/detail/CVE-2025-68613) — CVSS 9.9; informs alert rule design decision to use structured JSON
-- [Actual Budget PR #2836](https://github.com/actualbudget/actual/pull/2836) — real-world evidence that SimpleFIN `org_slug` can be null; informs fallback handling
-- [Protonmail Bridge Docker (shenxn)](https://github.com/shenxn/protonmail-bridge-docker) — community-maintained Docker container; setup pattern needs Phase 4 validation
-- [recharts DashedLineChart example](https://recharts.github.io/en-US/examples/DashedLineChart/) — `strokeDasharray` support confirmed for projection visualization
+- [@tanstack/react-table npm](https://www.npmjs.com/package/@tanstack/react-table) — v8.21.3 verified, React 19 compatible
+- [date-fns npm](https://www.npmjs.com/package/date-fns) — v4.1.0, 34.9M weekly downloads
+- [sonner npm](https://www.npmjs.com/package/sonner) — v2.0.7, React 18+ required, React 19 confirmed compatible
+- [Actual Budget SimpleFIN duplicate transactions](https://github.com/actualbudget/actual/issues/2519) — real-world dedup failure modes
+- [Actual Budget cross-account mirror transactions](https://github.com/actualbudget/actual/issues/7015) — Mercury bank behavior
+- [Stripe: Transaction Categorization Guide](https://stripe.com/resources/more/what-is-transaction-categorization-a-guide-to-transaction-taxonomy-and-its-benefits) — 70-85% accuracy ceiling
+- [SQL Habit: Recurring Payment Detection](https://www.sqlhabit.com/blog/how-to-detect-recurring-payments-with-sql) — detection algorithm approach
+- [Kitces.com: TWR vs IRR calculations](https://www.kitces.com/blog/twr-dwr-irr-calculations-performance-reporting-software-methodology-gips-compliance/) — return methodology comparison
 
-### Tertiary (LOW confidence / training knowledge)
-- Empower, Monarch Money, Firefly III, ProjectionLab feature comparison — training knowledge as of May 2025; specific UI details may have changed but broad feature characterization is reliable
+### Tertiary (LOW confidence)
+- [bojanz/currency](https://github.com/bojanz/currency) — multi-currency library, deferred feature, not yet validated against project's decimal usage patterns
 
 ---
-*Research completed: 2026-03-15*
+*Research completed: 2026-03-17*
 *Ready for roadmap: yes*

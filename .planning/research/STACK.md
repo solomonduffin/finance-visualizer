@@ -1,332 +1,187 @@
-# Stack Research: v1.1 Additions
+# Stack Research
 
-**Domain:** Self-hosted personal finance dashboard -- new capabilities for email alerts, financial projections, crypto aggregation, and alert rule builder
-**Researched:** 2026-03-15
-**Confidence:** HIGH (go-mail verified via pkg.go.dev and GitHub releases; react-querybuilder verified via npm and official docs; SimpleFIN protocol verified via protocol spec and existing codebase; shopspring/decimal capabilities verified via GitHub issues and pkg.go.dev)
+**Domain:** Personal finance dashboard -- next-step feature additions (v1.2)
+**Researched:** 2026-03-17
+**Confidence:** HIGH (existing stack verified from codebase, additions verified via npm/pkg.go.dev)
 
----
+## Existing Stack (DO NOT change)
 
-## Scope
+Already validated and working in v1.0/v1.1 -- listed for reference only:
 
-This research covers ONLY the stack additions needed for v1.1 features. The existing validated stack (Go 1.25, go-chi, React 19, TypeScript 5.9, Tailwind v4, SQLite via modernc.org/sqlite, recharts 3.x, shopspring/decimal, JWT auth, Docker, Nginx) is NOT re-researched.
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Go | 1.25 | Backend, cron scheduler, API |
+| chi/v5 | 5.2.5 | HTTP router |
+| modernc.org/sqlite | 1.46.1 | Pure-Go SQLite driver (FTS5 compiled in) |
+| golang-migrate/migrate/v4 | 4.19.1 | Database migrations |
+| shopspring/decimal | 1.4.0 | Decimal arithmetic for balances |
+| expr-lang/expr | 1.17.8 | Alert expression evaluation |
+| wneessen/go-mail | 0.7.2 | SMTP email for alerts |
+| React | 19.2.4 | Frontend framework |
+| TypeScript | 5.9.3 | Type safety |
+| Vite | 7.0.0 | Build tooling |
+| Recharts | 3.8.0 | Charting (line, area, composed) |
+| Tailwind CSS | 4.2.1 | Styling |
+| react-router-dom | 7.13.1 | Client-side routing |
+| @dnd-kit | 0.3.2 | Drag and drop (group management) |
+| Vitest | 3.2.1 | Testing |
 
-**New capabilities needed:**
-1. SMTP email sending from Go (alert notifications)
-2. Financial projection / compound interest math
-3. SimpleFIN holdings data for crypto and investment detail
-4. Alert rule expression builder UI
-5. Projection and drill-down chart visualizations
+## Recommended Stack Additions
 
----
+### Backend Libraries (Go)
 
-## New Backend Libraries
+| Library | Version | Purpose | Why Recommended |
+|---------|---------|---------|-----------------|
+| `encoding/csv` (stdlib) | go1.25 | CSV export of balance history, transactions | Standard library -- zero dependencies, streaming Writer with Flush, handles RFC 4180 correctly. No reason to add a third-party CSV library for export-only use. |
+| `bojanz/currency` | latest | Currency metadata (symbols, formatting, digits) | Only needed IF multi-currency support is added. Provides CLDR v48 data (~40KB), locale-aware formatting, and ISO 4217 codes. Pairs well with existing shopspring/decimal for arithmetic. |
 
-### Email: go-mail
+**NOT recommended for backend:**
 
-| Property | Value |
-|----------|-------|
-| **Library** | `github.com/wneessen/go-mail` |
-| **Version** | v0.7.1 |
-| **Purpose** | SMTP email sending for alert notifications |
-| **Min Go** | Go 1.24+ (project uses 1.25, compatible) |
-| **License** | MIT |
+| Library | Why Not |
+|---------|---------|
+| `govalues/decimal` or `govalues/money` | Faster than shopspring/decimal in benchmarks, but project already uses shopspring throughout. Migration cost for no meaningful benefit at single-user scale. Stick with shopspring/decimal. |
+| `go-pdf/fpdf` | PDF export is over-engineering for a single-user dashboard. CSV covers 95% of export needs. If PDF is ever wanted, generate it client-side from the browser print dialog or use the backend to serve CSV and let the user open in a spreadsheet. The fpdf library was also archived on GitHub in March 2025, migrated to Codeberg. |
+| Any exchange rate API client | Premature. Multi-currency is a large feature. If needed later, use a simple HTTP client to call a free API (e.g., exchangerate-api.com) rather than adding a Go SDK dependency. |
 
-**Why go-mail over alternatives:**
+### Frontend Libraries (React/TypeScript)
 
-- **Not net/smtp:** The Go standard library's `net/smtp` package is frozen by the Go team and will not receive new features or security improvements. go-mail forked and extended it.
-- **Not gomail:** gomail is abandoned (last release 2016, archived repo). go-mail is its spiritual successor with active maintenance (v0.7.1 released 2025, CVE-2025-59937 patched).
-- **Not a transactional email API (SendGrid, Mailgun):** The user is self-hosted and uses Protonmail. Adding a third-party email API dependency defeats the self-hosted philosophy and requires account signup, API keys, and ongoing cost. Direct SMTP via Protonmail Bridge keeps everything local.
+| Library | Version | Purpose | Why Recommended |
+|---------|---------|---------|-----------------|
+| `@tanstack/react-table` | ^8.21.3 | Transaction list with sort/filter/pagination | Headless, 5-14KB, works with Tailwind. Only needed if transaction viewing is built. Provides sorting, filtering, pagination, column visibility out of the box without imposing UI opinions. |
+| `date-fns` | ^4.1.0 | Date formatting, parsing, relative time | Current codebase uses native Date with a custom `timeAgo()` utility. Adding transactions/budgeting means significantly more date manipulation (month boundaries, week ranges, period comparisons). date-fns is tree-shakeable (~18KB gzipped for typical usage), functional style. Only import what you need. |
+| `sonner` | ^2.0.7 | Toast notifications for user feedback | The app currently has no toast/notification system. Operations like "export complete", "sync triggered", "settings saved" need feedback. Sonner is 5KB, requires zero hooks setup, works with React 19, and persists across route changes. |
+| `clsx` | ^2.1.1 | Conditional CSS class composition | 239 bytes. Currently the codebase uses string interpolation for conditional classes. As components grow more complex (transaction rows with status colors, category badges), clsx keeps class logic clean. Trivial to adopt incrementally. |
 
-**Key features relevant to this project:**
+**NOT recommended for frontend:**
 
-- STARTTLS support with configurable TLS policies (required for Protonmail Bridge)
-- AUTH methods: PLAIN, LOGIN, CRAM-MD5, SCRAM-SHA-1, SCRAM-SHA-256, XOAUTH2
-- Concurrency-safe (safe to call from alert-checking goroutine)
-- Minimal dependency footprint (mostly Go stdlib)
-- S/MIME signing support (v0.6.0+, optional but nice for email authenticity)
-- Context-aware sending with timeouts
+| Library | Why Not |
+|---------|---------|
+| `zustand` / `jotai` / Redux | The app uses React Context + prop drilling and it works fine for a single-user dashboard. No complex shared state, no performance issues from Context re-renders at this scale. Adding a state manager is premature complexity. |
+| `luxon` | Overkill timezone handling for a single-user app where everything is in local time. date-fns covers the use cases better with smaller bundle. |
+| `dayjs` | Moment.js-style mutable API is less ergonomic than date-fns functional approach. Plugin system adds friction. |
+| `react-number-format` | Use native `Intl.NumberFormat` for currency display. It is built into browsers, zero bundle cost, and handles locale-aware formatting. The app already displays dollar amounts -- just standardize on a utility function wrapping `Intl.NumberFormat`. |
+| `papaparse` / `react-papaparse` | For CSV *export*, the backend generates CSV via `encoding/csv` and sends it as a download. No client-side CSV generation needed. PapaParse is for *parsing* uploaded CSVs, which is not a planned feature. |
+| `file-saver` | Modern browsers handle `Content-Disposition: attachment` headers natively. The backend sets the header, browser downloads the file. No client-side blob saving needed for export. |
+| Material React Table / AG Grid | Commercial or heavy. TanStack Table + Tailwind gives full control without framework lock-in. |
 
-**Protonmail Bridge integration:**
+### Development Tools
 
-The user uses Protonmail. Protonmail does not expose standard SMTP -- it requires Protonmail Bridge running locally, which creates a local SMTP server at `127.0.0.1:1025` using STARTTLS. For Docker deployments, a Protonmail Bridge Docker container (e.g., `shenxn/protonmail-bridge` or `VideoCurio/ProtonMailBridgeDocker`) must run alongside the app, exposing SMTP on the Docker network.
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| SQLite FTS5 | Full-text search on transaction descriptions | Already compiled into modernc.org/sqlite. No new dependency needed -- just create FTS5 virtual tables in migrations. Useful for searching transaction descriptions. |
 
-SMTP configuration fields needed in the app:
-- Host (default: `127.0.0.1` or bridge container hostname)
-- Port (default: `1025` for Bridge, `587` for standard SMTP)
-- Username (Protonmail email address)
-- Password (Bridge-generated password, NOT Protonmail password)
-- Auth method (PLAIN for Bridge)
-- TLS mode (STARTTLS)
-- From address
+## Installation
 
-**Architecture note:** Store SMTP config in SQLite settings table. The email sender should be an interface (`internal/notify/sender.go`) so it can be mocked in tests. The alert-checking goroutine calls the sender when thresholds are crossed.
-
-### Financial Projections: No New Library Needed
-
-**Use shopspring/decimal (already in go.mod at v1.4.0).**
-
-Compound interest projection requires: `FV = PV * (1 + r/n)^(n*t)`
-
-shopspring/decimal provides:
-- `Decimal.Mul()` for multiplication
-- `Decimal.Div()` for division
-- `Decimal.Add()` for accumulation
-- `Decimal.Pow()` for integer exponents (works for annual compounding where exponent is whole years)
-
-**Critical limitation:** `Decimal.Pow()` truncates fractional exponents (e.g., `4^2.5` returns `16` not `32`). For sub-annual compounding (monthly, daily), use integer exponents by computing `(1 + r/12)^(12*years)` where the exponent `12*years` is always an integer. Alternatively, use `PowWithPrecision()` for fractional exponents with explicit precision control.
-
-**Recommended approach for projections:**
-- Monthly compounding with integer exponents: `(1 + APY/12)^months` -- exponent is always a whole number of months
-- Use `shopspring/decimal` throughout -- no float64 anywhere in the pipeline
-- For income modeling: monthly income amount * savings allocation percentage, added to each projection period
-- No external library needed. The math is straightforward with decimal arithmetic.
-
-**Do NOT use `alpeb/go-finance`:** Last meaningful commit 2020, only 80 GitHub stars, adds unnecessary dependency for calculations that are trivial with shopspring/decimal.
-
----
-
-## SimpleFIN Protocol: Holdings Data
-
-### What the Protocol Provides
-
-The SimpleFIN protocol includes a `holdings` array on account objects. Each holding has:
-
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `id` | string | Unique holding identifier | `"abc123"` |
-| `created` | int64 | Unix timestamp | `1734719509` |
-| `currency` | string | Currency code (may be empty) | `"USD"` or `""` |
-| `cost_basis` | string | Original investment cost | `"90000.00"` |
-| `description` | string | Full name of the holding | `"VANGUARD INDEX FUNDS S&P 500 ETF USD"` |
-| `market_value` | string | Current market value | `"100000.00"` |
-| `purchase_price` | string | Price per share at purchase | `"0.00"` |
-| `shares` | string | Number of shares/units | `"100.03"` |
-| `symbol` | string | Ticker symbol | `"VOO"` |
-
-### What Needs to Change in the Existing Codebase
-
-The current `internal/simplefin/client.go` uses `balances-only=1` query parameter, which suppresses transaction and holdings data. To get holdings:
-
-1. **Remove or make `balances-only` conditional:** When syncing investment/crypto accounts, omit `balances-only=1` to receive the `holdings` array.
-2. **Add `Holding` struct** to the SimpleFIN client:
-   ```go
-   type Holding struct {
-       ID            string `json:"id"`
-       Created       int64  `json:"created"`
-       Currency      string `json:"currency"`
-       CostBasis     string `json:"cost_basis"`
-       Description   string `json:"description"`
-       MarketValue   string `json:"market_value"`
-       PurchasePrice string `json:"purchase_price"`
-       Shares        string `json:"shares"`
-       Symbol        string `json:"symbol"`
-   }
-   ```
-3. **Add `Holdings []Holding` field** to the existing `Account` struct.
-4. **Create a `holdings` table** in SQLite to store per-account holding snapshots.
-
-### Crypto Aggregation via Holdings
-
-SimpleFIN does not distinguish "crypto" from "investment" at the protocol level. Crypto accounts (Coinbase, Kraken, etc.) appear as regular accounts with holdings. The aggregation logic (summing all Coinbase wallets into one line) is purely application-side:
-
-- Group accounts by `org.name` (or `org.domain`)
-- For institutions flagged as crypto (user-configurable or auto-detected), sum balances across all accounts from that org
-- Holdings data provides individual coin/token detail for drill-down
-
-**Vanguard investment detail:** Vanguard accounts include holdings with `symbol` (e.g., "VOO", "VTSAX"), `shares`, and `market_value`. This enables showing per-fund breakdown in net worth drill-down without any additional data source.
-
-### No New Library Needed
-
-The existing `net/http` client in `internal/simplefin/client.go` and `encoding/json` handle the expanded response. No new dependency required -- just struct additions and a schema migration.
-
----
-
-## New Frontend Libraries
-
-### Alert Rule Builder: react-querybuilder
-
-| Property | Value |
-|----------|-------|
-| **Library** | `react-querybuilder` |
-| **Version** | 8.14.0 |
-| **Purpose** | Visual expression builder for alert threshold rules |
-| **React compat** | React 18+ (React 19 explicitly tested and supported) |
-| **TypeScript** | Full type definitions included |
-| **License** | MIT |
-
-**Why react-querybuilder over alternatives:**
-
-- **Not react-awesome-query-builder:** More feature-rich but heavier, complex config format, and its React 19 compatibility status is unclear. react-querybuilder is simpler and explicitly supports React 19.
-- **Not a custom implementation:** Building a rule builder from scratch (dropdowns, operators, value inputs, group nesting) is 2-4 weeks of UI work with edge cases. react-querybuilder handles all of this out of the box.
-- **Not Syncfusion Query Builder:** Commercial license required. Unnecessary for a single-user self-hosted app.
-
-**How it fits the alert rules feature:**
-
-The alert system needs rules like:
-- "If Liquid Cash < $5,000, send email"
-- "If Net Worth drops by > 5% in 7 days, send email"
-- "If Savings + Checking > $50,000, send email"
-
-react-querybuilder provides:
-- **Custom fields:** Define buckets (Liquid, Savings, Investments, Net Worth) and individual accounts as selectable fields
-- **Custom operators:** `>`, `<`, `>=`, `<=`, `crosses above`, `crosses below`, `changes by %`
-- **Combinators:** AND/OR grouping for compound rules
-- **Export to JSON:** The rule tree serializes to JSON, which the Go backend stores and evaluates
-- **Fully customizable rendering:** Ships unstyled (or with compatibility packages). Style with Tailwind classes to match the existing UI.
-
-**Integration pattern:**
-```tsx
-import { QueryBuilder, type RuleGroupType } from 'react-querybuilder';
-
-const fields = [
-  { name: 'liquid_cash', label: 'Liquid Cash', inputType: 'number' },
-  { name: 'savings', label: 'Savings', inputType: 'number' },
-  { name: 'net_worth', label: 'Net Worth', inputType: 'number' },
-  // ... dynamically populated from accounts
-];
-
-const operators = [
-  { name: '>', label: 'greater than' },
-  { name: '<', label: 'less than' },
-  { name: 'crosses_above', label: 'crosses above' },
-  { name: 'crosses_below', label: 'crosses below' },
-  { name: 'pct_change_gt', label: 'changes by more than %' },
-];
-```
-
-The exported JSON rule tree is stored in the `alert_rules` table. The Go backend alert-checker goroutine deserializes and evaluates it against current balances.
-
-### Projection and Drill-Down Charts: No New Library Needed
-
-**Use recharts (already installed at v3.8.0).**
-
-recharts already provides everything needed for v1.1 chart features:
-
-| Chart Need | recharts Component | Technique |
-|------------|-------------------|-----------|
-| **Net worth drill-down historical** | `ComposedChart` + `Area` + `Line` | Stack multiple `<Area>` components for account breakdown, `<Line>` for net worth total |
-| **Projected net worth** | `ComposedChart` with two data series | Solid `<Area>` for historical data, dashed `<Area strokeDasharray="5 5">` for projection |
-| **Historical vs projection boundary** | `ReferenceLine` | Vertical reference line at "today" to visually separate actual from projected |
-| **Growth rate sparklines** | `LineChart` (mini) | Tiny inline charts in panel cards showing 30-day trend |
-| **Per-account drill-down** | `LineChart` or `AreaChart` | Individual account balance history with tooltips |
-
-**Dashed line for projections:** recharts supports `strokeDasharray` on `<Line>` and `<Area>` components. Use `strokeDasharray="5 5"` on the projection series to visually distinguish forecast from historical data. This is a built-in SVG property, not a plugin.
-
-**No need for a separate charting library.** recharts 3.x handles all v1.1 visualization needs.
-
----
-
-## Installation (New Dependencies Only)
+### Backend (only if building specific features)
 
 ```bash
-# Go backend -- add to go.mod
-go get github.com/wneessen/go-mail@v0.7.1
+# CSV export -- no installation needed, encoding/csv is stdlib
 
-# React frontend -- add to package.json
-npm install react-querybuilder@^8.14.0
+# Multi-currency (only if building that feature):
+go get github.com/bojanz/currency
 ```
 
-That is it. Two new dependencies total.
+### Frontend
 
----
+```bash
+# Core additions for transaction/budgeting features:
+npm install @tanstack/react-table date-fns sonner clsx
+
+# That is it. All 4 combined add ~45KB gzipped to the bundle.
+```
+
+## Stack Patterns by Feature
+
+**If building transaction viewing/categorization:**
+- Backend: Add `Transaction` struct to SimpleFIN client (fields: id, posted, amount, description, pending), store in new `transactions` table, expose via `/api/transactions` endpoint with query params for date range, account, category
+- Frontend: `@tanstack/react-table` for the list, `date-fns` for date range logic, `clsx` for conditional row styling
+- Database: FTS5 virtual table on transaction descriptions for search, categories table with user-defined mappings
+
+**If building data export (CSV):**
+- Backend: `encoding/csv` writing to `http.ResponseWriter` with `Content-Disposition: attachment` header
+- Frontend: Simple `<a>` link or `window.location` redirect to the export endpoint. No special library needed.
+- Endpoints: `GET /api/export/balances?format=csv&from=...&to=...`, `GET /api/export/transactions?format=csv&...`
+
+**If building spending analytics/budgeting:**
+- Backend: SQL aggregation queries (GROUP BY category, month), returned as JSON
+- Frontend: Recharts 3.8.0 already supports bar charts, composed charts, treemaps, pie charts -- no new charting library needed
+- Database: `budgets` table (category, amount, period), `categories` table (id, name, parent_id for hierarchy)
+
+**If building goal tracking:**
+- Backend: New `goals` table (name, target_amount, target_date, linked_account_ids), progress calculated server-side
+- Frontend: Recharts progress bars or custom SVG. `date-fns` for deadline calculations.
+- No new libraries needed beyond what is already listed
+
+**If building multi-currency:**
+- Backend: `bojanz/currency` for formatting and metadata, exchange rate fetching via simple HTTP client on a schedule
+- Database: `exchange_rates` table (from_currency, to_currency, rate, date), update daily
+- Frontend: `Intl.NumberFormat` with currency option for display. No library needed.
+- IMPORTANT: This is a large feature. The `currency` column already exists in accounts table but everything currently assumes USD. Requires touching all balance calculations, charts, and aggregations.
+
+**If building recurring transaction detection:**
+- Backend: Pure SQL + Go logic. Group transactions by normalized merchant name, check for regular intervals (weekly/monthly/yearly). No ML needed at single-user scale.
+- Database: `recurring_patterns` table (merchant_name, amount, frequency, last_seen, next_expected)
+- No new libraries needed
 
 ## Alternatives Considered
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| **Email sending** | go-mail v0.7.1 | net/smtp (stdlib) | Frozen, no new features, missing modern auth methods, no STARTTLS policy control |
-| **Email sending** | go-mail v0.7.1 | SendGrid/Mailgun API | Adds external service dependency, requires account/API key, costs money, defeats self-hosted ethos |
-| **Email sending** | go-mail v0.7.1 | gomail (go-gomail/gomail) | Abandoned since 2016, archived repository, no security patches |
-| **Email sending** | go-mail v0.7.1 | emersion/go-smtp | Lower-level SMTP library (client+server), more code to write for simple sending. go-mail wraps the sending use case more ergonomically |
-| **Projections math** | shopspring/decimal (existing) | alpeb/go-finance | Unmaintained (2020), tiny community, adds dep for trivial math |
-| **Projections math** | shopspring/decimal (existing) | math.Pow with float64 | Float precision errors accumulate in financial projections. Unacceptable for a finance app |
-| **Rule builder UI** | react-querybuilder 8.x | Custom implementation | 2-4 weeks of edge-case-heavy UI work for operator logic, group nesting, validation |
-| **Rule builder UI** | react-querybuilder 8.x | react-awesome-query-builder | Heavier, complex config, unclear React 19 support |
-| **Drill-down charts** | recharts 3.x (existing) | Nivo | Would add second charting library to bundle for no reason. recharts already handles all needed chart types |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| `@tanstack/react-table` | Build custom table components | If you only need a simple, non-sortable list of fewer than 50 items. TanStack Table shines when you need sort + filter + pagination. |
+| `date-fns` | Native `Date` + custom utilities | If the feature scope stays small (1-2 new date operations). Once you need month boundaries, week calculations, period diffs, date-fns pays for itself. |
+| `sonner` | `react-hot-toast` | If you prefer the toast(promise) pattern for async operations. react-hot-toast (2.6.0) is equally small. Sonner wins on accessibility and route-change persistence. |
+| `encoding/csv` (stdlib) | `gocarina/gocsv` | If you need struct-tag-based CSV serialization for complex types. For simple balance/transaction export, stdlib is cleaner. |
+| No state management library | `zustand` | If a future feature requires genuinely shared mutable state across unrelated component trees (not just prop drilling or context). Revisit then, not now. |
 
----
+## What NOT to Use
 
-## What NOT to Add
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| Moment.js | Deprecated, 329KB, mutable. The project itself recommends alternatives. | `date-fns` |
+| Chart.js / Victory / Nivo | Already invested in Recharts 3.8.0. Switching charting libraries is painful and unnecessary -- Recharts covers all needed chart types. | Recharts (already in stack) |
+| Prisma / TypeORM | Backend is Go, not Node.js. | Raw SQL + golang-migrate (already in stack) |
+| Any Go ORM (GORM, ent) | Project uses raw SQL with golang-migrate and it works well. ORMs add abstraction for no benefit at this scale. | Raw SQL (existing pattern) |
+| Redux / MobX | Massive overkill for a single-user dashboard with local-first data fetching patterns. | React Context (existing pattern) |
+| Tailwind UI / headlessui | Paid component library. The project builds custom components with Tailwind utilities and that is working fine. | Custom Tailwind components (existing pattern) |
 
-| Temptation | Why Resist | What to Do Instead |
-|------------|-----------|-------------------|
-| **A transactional email service SDK** (SendGrid, Mailgun, AWS SES) | External dependency, costs money, requires signup, self-hosted user expects local control | Use go-mail with SMTP directly to Protonmail Bridge or any user-configured SMTP server |
-| **A financial projection library** (go-finance, etc.) | Compound interest is `PV * (1 + r/n)^(n*t)` -- one function with shopspring/decimal. No library needed | Write a `Projection` function in `internal/projections/` using existing shopspring/decimal |
-| **A second charting library** (Chart.js, D3 direct, Nivo) | recharts 3.x already installed, handles all needed chart types including dashed projection lines | Use recharts ComposedChart with strokeDasharray for projections |
-| **A notification framework** (gorush, ntfy client) | This project sends low-volume email alerts (~1-10/day max). A notification framework is overkill | Simple `notify.SendEmail()` function using go-mail |
-| **A rule engine library** (grule-rule-engine, etc.) | Alert rules are simple threshold comparisons. A full rule engine adds complexity for "if balance < X" logic | Evaluate the react-querybuilder JSON tree with a small Go evaluator (~50-100 lines) |
-| **@tanstack/react-query** | Listed in v1.0 research but NOT in current package.json -- the project uses direct fetch. Don't add mid-project unless refactoring data fetching globally | Continue with existing fetch pattern or add only if the alert/projection settings pages create enough fetch complexity to justify it |
-| **cron library for alert checking** | Already have robfig/cron or a ticker loop for daily sync. Alert checking should run as part of the same sync cycle, not a separate scheduler | Check alert rules inside the existing sync goroutine after balance updates |
+## Version Compatibility
 
----
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `@tanstack/react-table@8.21.3` | React 16.8+ through 19 | Headless, no React version coupling issues |
+| `date-fns@4.1.0` | Any JS environment | Pure functions, no framework dependency |
+| `sonner@2.0.7` | React 18+ | Uses React 18+ APIs. Confirmed compatible with React 19. |
+| `clsx@2.1.1` | Any JS environment | Zero dependencies, framework agnostic |
+| `recharts@3.8.0` | React 18+ | Already in use and working with React 19.2.4 |
 
-## Stack Patterns for v1.1 Features
+## Critical Finding: SimpleFIN Transaction Data
 
-**Email notification architecture:**
-- `internal/notify/sender.go` -- interface: `type Sender interface { Send(to, subject, body string) error }`
-- `internal/notify/smtp.go` -- implementation using go-mail, configured from SMTP settings in DB
-- `internal/notify/mock.go` -- test double
-- Alert checker calls `sender.Send()` when threshold crossed
-- "Fire once on cross, once on recovery" state tracked per alert rule in DB (boolean `triggered` column)
+The SimpleFIN protocol provides transaction-level data that the current codebase does NOT consume. The existing client sets `balances-only=1`, which suppresses transaction details. Transaction fields available from SimpleFIN:
 
-**Alert rule evaluation flow:**
-1. Daily sync completes, new balances stored
-2. Alert checker loads all active rules from `alert_rules` table
-3. For each rule, deserialize the react-querybuilder JSON tree
-4. Evaluate against current balances using a recursive tree walker
-5. Compare result with `last_triggered` state
-6. If state changed (not triggered -> triggered, or triggered -> recovered), send email and update state
+- `id` (string) -- unique transaction identifier
+- `posted` (int64) -- Unix epoch timestamp
+- `amount` (string) -- positive = deposit, negative = withdrawal
+- `description` (string) -- human-readable merchant/description
+- `pending` (boolean) -- whether the transaction has posted
 
-**Projection calculation flow:**
-1. Frontend sends: per-account APY, reinvestment toggles, income amount, savings allocation, time horizon
-2. Backend computes monthly projections using shopspring/decimal:
-   - For each month: `balance = balance * (1 + monthlyRate)` if reinvesting
-   - Add allocated income to applicable accounts
-   - Sum all accounts for net worth projection
-3. Return array of `{month, projectedBalance}` points
-4. Frontend renders with recharts: historical (solid) + projected (dashed)
+This means transaction-based features (categorization, spending analytics, recurring detection) are feasible without any new data source. The existing `fetchAccountData()` function already supports `balancesOnly=false` for holdings -- a similar path can expose transaction data by adding a `Transaction` struct and a `transactions` field to the `Account` struct.
 
-**Protonmail Bridge Docker pattern:**
-```yaml
-# docker-compose.yml addition
-services:
-  protonmail-bridge:
-    image: shenxn/protonmail-bridge:latest
-    volumes:
-      - protonmail-data:/root
-    # Only expose SMTP internally on Docker network
-    # No host port mapping needed -- app container connects directly
-```
-The finance app container references `protonmail-bridge:1025` as SMTP host. User runs `docker exec -it protonmail-bridge /bin/bash` once to authenticate with Protonmail.
-
----
-
-## Version Compatibility (New Additions)
-
-| New Package | Compatible With | Notes |
-|-------------|-----------------|-------|
-| go-mail v0.7.1 | Go 1.25.0 | Requires Go 1.24+. Project uses 1.25. No conflicts with existing deps (no overlapping SMTP packages) |
-| react-querybuilder 8.14.0 | React 19.2.4 | Minimum React 18. Explicitly tested with React 19. TypeScript types included. No peer dep conflicts with existing recharts or react-router-dom |
-| react-querybuilder 8.14.0 | Tailwind CSS v4 | Ships unstyled by default -- style with Tailwind classes via `controlClassnames` prop. No CSS framework conflicts |
-
----
+**This is the single most important stack finding: no new external integration is needed for transaction data.** The plumbing to fetch it already exists; it just needs to be turned on and stored.
 
 ## Sources
 
-- [wneessen/go-mail GitHub releases](https://github.com/wneessen/go-mail/releases) -- v0.7.1 confirmed, CVE-2025-59937 security fix, Go 1.24+ requirement (HIGH confidence)
-- [go-mail pkg.go.dev](https://pkg.go.dev/github.com/wneessen/go-mail) -- API reference, auth methods: PLAIN, LOGIN, CRAM-MD5, SCRAM-SHA-1/256, XOAUTH2 (HIGH confidence)
-- [go-mail wiki](https://github.com/wneessen/go-mail/wiki) -- Getting started, STARTTLS configuration (HIGH confidence)
-- [react-querybuilder npm](https://www.npmjs.com/package/react-querybuilder) -- v8.14.0, React 19 support confirmed (HIGH confidence)
-- [react-querybuilder docs](https://react-querybuilder.js.org/) -- TypeScript reference, custom fields/operators, export format (HIGH confidence)
-- [SimpleFIN Protocol](https://www.simplefin.org/protocol.html) -- Account and holdings schema (HIGH confidence)
-- [SimpleFIN GitHub protocol.md](https://github.com/simplefin/simplefin.github.com/blob/master/protocol.md) -- Authoritative spec source (HIGH confidence)
-- [Protonmail Bridge SMTP settings](https://proton.me/support/imap-smtp-and-pop3-setup) -- 127.0.0.1:1025, STARTTLS, Bridge-generated password (HIGH confidence)
-- [Protonmail Bridge Docker](https://github.com/shenxn/protonmail-bridge-docker) -- Docker container for headless Bridge (MEDIUM confidence -- community-maintained, not official Proton)
-- [shopspring/decimal Pow issue #55](https://github.com/shopspring/decimal/issues/55) -- Fractional exponent limitation confirmed, PowWithPrecision workaround (HIGH confidence)
-- [shopspring/decimal pkg.go.dev](https://pkg.go.dev/github.com/shopspring/decimal) -- v1.4.0, PowWithPrecision method documented (HIGH confidence)
-- [recharts Dashed Line Chart example](https://recharts.github.io/en-US/examples/DashedLineChart/) -- strokeDasharray support confirmed (HIGH confidence)
+- [encoding/csv](https://pkg.go.dev/encoding/csv) -- Go standard library CSV package
+- [@tanstack/react-table npm](https://www.npmjs.com/package/@tanstack/react-table) -- v8.21.3 verified
+- [date-fns npm](https://www.npmjs.com/package/date-fns) -- v4.1.0, 34.9M weekly downloads
+- [sonner npm](https://www.npmjs.com/package/sonner) -- v2.0.7, React 18+ toast component
+- [bojanz/currency](https://github.com/bojanz/currency) -- Go currency handling with CLDR v48
+- [recharts npm](https://www.npmjs.com/package/recharts) -- v3.8.0 confirmed latest
+- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) -- FTS5 compiled in, confirmed
+- [SimpleFIN Protocol](https://www.simplefin.org/protocol.html) -- Transaction fields specification
+- [TanStack Table docs](https://tanstack.com/table/latest) -- headless table for React
+- [clsx](https://github.com/lukeed/clsx) -- 239B conditional class utility
+- [SQLite FTS5](https://www.sqlite.org/fts5.html) -- Full-text search extension
 
 ---
-
-*Stack research for: v1.1 feature additions (email, projections, crypto aggregation, alert rule builder)*
-*Researched: 2026-03-15*
+*Stack research for: Finance Visualizer v1.2 feature additions*
+*Researched: 2026-03-17*
