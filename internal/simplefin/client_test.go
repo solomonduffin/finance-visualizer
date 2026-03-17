@@ -277,3 +277,238 @@ func TestAccountSet_JSONTypes(t *testing.T) {
 		t.Errorf("expected BalanceDate 1700000000, got %d", as.Accounts[0].BalanceDate)
 	}
 }
+
+// sampleAccountSetWithHoldings is valid SimpleFIN JSON with accounts that include holdings.
+var sampleAccountSetWithHoldings = `{
+  "errors": [],
+  "accounts": [
+    {
+      "id": "acct-invest",
+      "name": "Brokerage Account",
+      "currency": "USD",
+      "balance": "50000.00",
+      "balance-date": 1700000000,
+      "org": {
+        "name": "Fidelity",
+        "id": "fidelity"
+      },
+      "holdings": [
+        {
+          "id": "hold-001",
+          "created": 1690000000,
+          "currency": "USD",
+          "cost_basis": "10000.00",
+          "description": "Vanguard S&P 500 ETF",
+          "market_value": "15000.00",
+          "purchase_price": "400.00",
+          "shares": "25",
+          "symbol": "VOO"
+        },
+        {
+          "id": "hold-002",
+          "created": 1695000000,
+          "currency": "USD",
+          "cost_basis": "5000.00",
+          "description": "Apple Inc",
+          "market_value": "8000.00",
+          "purchase_price": "150.00",
+          "shares": "33.33",
+          "symbol": "AAPL"
+        }
+      ]
+    }
+  ]
+}`
+
+func TestFetchAccountsWithHoldings_ReturnsHoldings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(sampleAccountSetWithHoldings))
+	}))
+	defer srv.Close()
+
+	result, err := simplefin.FetchAccountsWithHoldings(srv.URL+"/accounts", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Accounts) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result.Accounts))
+	}
+
+	acct := result.Accounts[0]
+	if len(acct.Holdings) != 2 {
+		t.Fatalf("expected 2 holdings, got %d", len(acct.Holdings))
+	}
+
+	h := acct.Holdings[0]
+	if h.ID != "hold-001" {
+		t.Errorf("expected holding ID hold-001, got %s", h.ID)
+	}
+	if h.Symbol != "VOO" {
+		t.Errorf("expected symbol VOO, got %s", h.Symbol)
+	}
+	if h.Description != "Vanguard S&P 500 ETF" {
+		t.Errorf("expected description 'Vanguard S&P 500 ETF', got %s", h.Description)
+	}
+	if h.MarketValue != "15000.00" {
+		t.Errorf("expected market_value 15000.00, got %s", h.MarketValue)
+	}
+	if h.Shares != "25" {
+		t.Errorf("expected shares 25, got %s", h.Shares)
+	}
+	if h.CostBasis != "10000.00" {
+		t.Errorf("expected cost_basis 10000.00, got %s", h.CostBasis)
+	}
+	if h.PurchasePrice != "400.00" {
+		t.Errorf("expected purchase_price 400.00, got %s", h.PurchasePrice)
+	}
+	if h.Created != 1690000000 {
+		t.Errorf("expected created 1690000000, got %d", h.Created)
+	}
+	if h.Currency != "USD" {
+		t.Errorf("expected currency USD, got %s", h.Currency)
+	}
+}
+
+func TestFetchAccountsWithHoldings_OmitsBalancesOnly(t *testing.T) {
+	var capturedURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedURL = r.URL.String()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"errors":[],"accounts":[]}`))
+	}))
+	defer srv.Close()
+
+	_, err := simplefin.FetchAccountsWithHoldings(srv.URL+"/accounts", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(capturedURL, "balances-only") {
+		t.Errorf("expected NO balances-only in URL for FetchAccountsWithHoldings, got: %s", capturedURL)
+	}
+}
+
+func TestAccount_UnmarshalWithHoldings(t *testing.T) {
+	accountJSON := `{
+		"id": "acct-001",
+		"name": "Investment",
+		"currency": "USD",
+		"balance": "10000.00",
+		"balance-date": 1700000000,
+		"org": {"name": "Bank", "id": "bank"},
+		"holdings": [
+			{
+				"id": "h1",
+				"created": 1690000000,
+				"currency": "USD",
+				"cost_basis": "1000.00",
+				"description": "Test Stock",
+				"market_value": "1500.00",
+				"purchase_price": "100.00",
+				"shares": "10",
+				"symbol": "TST"
+			}
+		]
+	}`
+
+	var acct simplefin.Account
+	if err := json.Unmarshal([]byte(accountJSON), &acct); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if len(acct.Holdings) != 1 {
+		t.Fatalf("expected 1 holding, got %d", len(acct.Holdings))
+	}
+	if acct.Holdings[0].Symbol != "TST" {
+		t.Errorf("expected symbol TST, got %s", acct.Holdings[0].Symbol)
+	}
+}
+
+func TestAccount_UnmarshalWithoutHoldings(t *testing.T) {
+	// Backward compatible: no holdings field at all
+	accountJSON := `{
+		"id": "acct-001",
+		"name": "Checking",
+		"currency": "USD",
+		"balance": "5000.00",
+		"balance-date": 1700000000,
+		"org": {"name": "Bank", "id": "bank"}
+	}`
+
+	var acct simplefin.Account
+	if err := json.Unmarshal([]byte(accountJSON), &acct); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if acct.Holdings != nil {
+		t.Errorf("expected nil holdings for account without holdings, got %v", acct.Holdings)
+	}
+}
+
+func TestAccount_UnmarshalEmptyHoldings(t *testing.T) {
+	// Backward compatible: empty holdings array
+	accountJSON := `{
+		"id": "acct-001",
+		"name": "Checking",
+		"currency": "USD",
+		"balance": "5000.00",
+		"balance-date": 1700000000,
+		"org": {"name": "Bank", "id": "bank"},
+		"holdings": []
+	}`
+
+	var acct simplefin.Account
+	if err := json.Unmarshal([]byte(accountJSON), &acct); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if len(acct.Holdings) != 0 {
+		t.Errorf("expected 0 holdings for empty array, got %d", len(acct.Holdings))
+	}
+}
+
+func TestHolding_AllFieldsMapped(t *testing.T) {
+	holdingJSON := `{
+		"id": "h-123",
+		"created": 1690000000,
+		"currency": "USD",
+		"cost_basis": "5000.00",
+		"description": "Total Bond Market ETF",
+		"market_value": "5500.00",
+		"purchase_price": "100.00",
+		"shares": "50",
+		"symbol": "BND"
+	}`
+
+	var h simplefin.Holding
+	if err := json.Unmarshal([]byte(holdingJSON), &h); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if h.ID != "h-123" {
+		t.Errorf("expected ID h-123, got %s", h.ID)
+	}
+	if h.Created != 1690000000 {
+		t.Errorf("expected Created 1690000000, got %d", h.Created)
+	}
+	if h.Currency != "USD" {
+		t.Errorf("expected Currency USD, got %s", h.Currency)
+	}
+	if h.CostBasis != "5000.00" {
+		t.Errorf("expected CostBasis 5000.00, got %s", h.CostBasis)
+	}
+	if h.Description != "Total Bond Market ETF" {
+		t.Errorf("expected Description 'Total Bond Market ETF', got %s", h.Description)
+	}
+	if h.MarketValue != "5500.00" {
+		t.Errorf("expected MarketValue 5500.00, got %s", h.MarketValue)
+	}
+	if h.PurchasePrice != "100.00" {
+		t.Errorf("expected PurchasePrice 100.00, got %s", h.PurchasePrice)
+	}
+	if h.Shares != "50" {
+		t.Errorf("expected Shares 50, got %s", h.Shares)
+	}
+	if h.Symbol != "BND" {
+		t.Errorf("expected Symbol BND, got %s", h.Symbol)
+	}
+}
