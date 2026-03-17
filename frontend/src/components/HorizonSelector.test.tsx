@@ -49,10 +49,9 @@ describe('HorizonSelector', () => {
     // Click Custom
     await userEvent.click(screen.getByText('Custom'))
 
-    // Now the input should be visible -- but onChange fires immediately
-    // Re-render with a non-preset value to see the input
-    const { rerender } = render(<HorizonSelector years={7} onChange={onChange} />)
+    // Now the input should be visible
     expect(screen.getByLabelText('Custom projection years')).toBeInTheDocument()
+    expect(screen.getByText('Custom')).toHaveAttribute('aria-checked', 'true')
   })
 
   it('custom input has min=1 max=50', () => {

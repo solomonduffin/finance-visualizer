@@ -14,21 +14,21 @@ interface HorizonSelectorProps {
 }
 
 export function HorizonSelector({ years, onChange }: HorizonSelectorProps) {
-  const isPreset = PRESETS.some((p) => p.years === years && p.years !== -1)
-  const showCustom = !isPreset
+  const isPresetValue = PRESETS.some((p) => p.years === years && p.years !== -1)
+  const [customMode, setCustomMode] = useState(!isPresetValue)
 
   const [customValue, setCustomValue] = useState<string>(
-    isPreset ? '5' : String(years),
+    isPresetValue ? '5' : String(years),
   )
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Focus input when Custom is clicked
   useEffect(() => {
-    if (showCustom && inputRef.current) {
+    if (customMode && inputRef.current) {
       inputRef.current.focus()
     }
-  }, [showCustom])
+  }, [customMode])
 
   // Cleanup debounce on unmount
   useEffect(() => {
@@ -69,7 +69,8 @@ export function HorizonSelector({ years, onChange }: HorizonSelectorProps) {
   const handlePresetClick = useCallback(
     (presetYears: number) => {
       if (presetYears === -1) {
-        // Custom clicked: use current custom value or default
+        // Custom clicked: enter custom mode
+        setCustomMode(true)
         const num = parseInt(customValue, 10)
         if (!isNaN(num) && num >= 1 && num <= 50) {
           onChange(num)
@@ -78,6 +79,7 @@ export function HorizonSelector({ years, onChange }: HorizonSelectorProps) {
           onChange(5)
         }
       } else {
+        setCustomMode(false)
         onChange(presetYears)
       }
     },
@@ -94,8 +96,8 @@ export function HorizonSelector({ years, onChange }: HorizonSelectorProps) {
         {PRESETS.map(({ label, years: presetYears }) => {
           const isActive =
             presetYears === -1
-              ? showCustom
-              : years === presetYears
+              ? customMode
+              : !customMode && years === presetYears
 
           return (
             <button
@@ -116,7 +118,7 @@ export function HorizonSelector({ years, onChange }: HorizonSelectorProps) {
         })}
       </div>
 
-      {showCustom && (
+      {customMode && (
         <div className="flex items-center gap-2 mt-2 md:mt-0 md:ml-3">
           <input
             ref={inputRef}
