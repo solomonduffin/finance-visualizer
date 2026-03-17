@@ -21,9 +21,10 @@ describe('projectBalance', () => {
   it('compound with contributions: $10000 at 5% APY, 12 months, $500/month', () => {
     // Manual: month-by-month compound with monthly contribution
     // monthlyRate = 0.05/12 = 0.00416667
-    // After 12 months: principal grows + contributions compound
+    // After 12 months: principal grows with compounding + contributions also compound
+    // Verified: 10000*(1.00416667)^12 + 500*((1.00416667)^12 - 1)/0.00416667 = 16651.05
     const result = projectBalance(10000, 5, true, 12, 500)
-    expect(result).toBeCloseTo(16386, 0)
+    expect(result).toBeCloseTo(16651.05, 2)
   })
 
   it('0% APY returns principal unchanged after any number of months', () => {
