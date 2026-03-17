@@ -60,6 +60,7 @@ Progress: [████████░░] 78% (14/18 plans complete through Pha
 | Phase 07 P01 | 9min | 2 tasks | 9 files |
 | Phase 08 P01 | 5min | 2 tasks | 12 files |
 | Phase 08 P03 | 5min | 2 tasks | 7 files |
+| Phase 09 P01 | 6min | 2 tasks | 6 files |
 | Phase 09 P03 | 4min | 2 tasks | 6 files |
 
 ## Accumulated Context
@@ -101,6 +102,9 @@ Recent decisions affecting current work:
 - [Phase 08]: Operand select uses encoded value strings (type:ref:label) for round-trip fidelity
 - [Phase 08]: formatExpressionSummary exported from AlertRuleCard for testability and reuse
 - [Phase 08]: AlertRuleForm loads accounts/groups on mount via getAccounts() for dropdown population
+- [Phase 09]: fetchAccountData private helper extracts shared logic between FetchAccounts and FetchAccountsWithHoldings
+- [Phase 09]: Holdings persistence uses transactional DELETE+INSERT rather than individual UPSERTs
+- [Phase 09]: persistHoldings only called for InferAccountType == "investment" with non-empty Holdings
 - [Phase 09]: Compound interest test expectation corrected: plan ~$16386 vs actual $16651.05 (contributions also compound)
 - [Phase 09]: hasHoldings flag prevents double-counting: accounts with holdings skipped in account loop
 - [Phase 09]: Allocation validation suppresses income when sum != 100% (growth-only fallback)
@@ -117,6 +121,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T02:56:13.919Z
-Stopped at: Completed 09-03-PLAN.md
+Last session: 2026-03-17T02:56:00Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None
