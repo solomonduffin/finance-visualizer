@@ -80,7 +80,7 @@ func TestGetProjectionSettings_Defaults(t *testing.T) {
 		t.Fatalf("expected 2 accounts, got %d", len(resp.Accounts))
 	}
 
-	// Check defaults: apy="0", compound=true, included=true
+	// Check defaults: apy="0", compound=true, included=false
 	for _, acct := range resp.Accounts {
 		if acct.APY != "0" {
 			t.Errorf("account %s: expected apy='0', got %q", acct.AccountID, acct.APY)
@@ -88,8 +88,8 @@ func TestGetProjectionSettings_Defaults(t *testing.T) {
 		if !acct.Compound {
 			t.Errorf("account %s: expected compound=true", acct.AccountID)
 		}
-		if !acct.Included {
-			t.Errorf("account %s: expected included=true", acct.AccountID)
+		if acct.Included {
+			t.Errorf("account %s: expected included=false", acct.AccountID)
 		}
 	}
 }
@@ -149,8 +149,8 @@ func TestGetProjectionSettings_HoldingsNested(t *testing.T) {
 		if !h.Compound {
 			t.Errorf("holding %s: expected compound=true", h.HoldingID)
 		}
-		if !h.Included {
-			t.Errorf("holding %s: expected included=true", h.HoldingID)
+		if h.Included {
+			t.Errorf("holding %s: expected included=false", h.HoldingID)
 		}
 		if h.Allocation != "0" {
 			t.Errorf("holding %s: expected allocation='0', got %q", h.HoldingID, h.Allocation)

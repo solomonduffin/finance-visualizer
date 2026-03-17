@@ -68,7 +68,7 @@ func GetProjectionSettings(db *sql.DB) http.HandlerFunc {
 				COALESCE(bs.balance, '0') as balance,
 				COALESCE(ps.apy, '0') as apy,
 				COALESCE(ps.compound, 1) as compound,
-				COALESCE(ps.included, 1) as included
+				COALESCE(ps.included, 0) as included
 			FROM accounts a
 			LEFT JOIN projection_account_settings ps ON a.id = ps.account_id
 			LEFT JOIN (
@@ -120,7 +120,7 @@ func GetProjectionSettings(db *sql.DB) http.HandlerFunc {
 					h.id, COALESCE(h.symbol, '') as symbol, h.description, h.market_value,
 					COALESCE(phs.apy, '0') as apy,
 					COALESCE(phs.compound, 1) as compound,
-					COALESCE(phs.included, 1) as included,
+					COALESCE(phs.included, 0) as included,
 					COALESCE(phs.allocation, '0') as allocation
 				FROM holdings h
 				LEFT JOIN projection_holding_settings phs ON h.id = phs.holding_id
