@@ -517,3 +517,95 @@ export async function sendTestEmail(data: EmailConfigRequest): Promise<{ ok: boo
   }
   return res.json()
 }
+
+// ---- Projection Settings ----
+
+export interface ProjectionHoldingSetting {
+  holding_id: string
+  symbol: string
+  description: string
+  market_value: string
+  apy: string
+  compound: boolean
+  included: boolean
+  allocation: string
+}
+
+export interface ProjectionAccountSetting {
+  account_id: string
+  account_name: string
+  account_type: string
+  balance: string
+  apy: string
+  compound: boolean
+  included: boolean
+  holdings: ProjectionHoldingSetting[]
+}
+
+export interface ProjectionIncomeSettings {
+  enabled: boolean
+  annual_income: string
+  monthly_savings_pct: string
+  allocation_json: string
+}
+
+export interface ProjectionSettingsResponse {
+  accounts: ProjectionAccountSetting[]
+  income: ProjectionIncomeSettings
+}
+
+export interface SaveProjectionSettingsRequest {
+  accounts: Array<{
+    account_id: string
+    apy: string
+    compound: boolean
+    included: boolean
+  }>
+  holdings: Array<{
+    holding_id: string
+    account_id: string
+    apy: string
+    compound: boolean
+    included: boolean
+    allocation: string
+  }>
+}
+
+/**
+ * GET /api/projections/settings
+ * Returns all accounts with their projection settings (apy, compound, included),
+ * holdings nested under investment accounts, and income modeling configuration.
+ */
+export async function getProjectionSettings(): Promise<ProjectionSettingsResponse> {
+  const res = await fetch('/api/projections/settings', { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch projection settings')
+  return res.json()
+}
+
+/**
+ * PUT /api/projections/settings
+ * Persists rate/toggle changes for accounts and holdings.
+ */
+export async function saveProjectionSettings(data: SaveProjectionSettingsRequest): Promise<void> {
+  const res = await fetch('/api/projections/settings', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to save projection settings')
+}
+
+/**
+ * PUT /api/projections/income
+ * Persists income modeling settings (enabled, annual income, savings pct, allocation).
+ */
+export async function saveIncomeSettings(data: ProjectionIncomeSettings): Promise<void> {
+  const res = await fetch('/api/projections/income', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to save income settings')
+}
