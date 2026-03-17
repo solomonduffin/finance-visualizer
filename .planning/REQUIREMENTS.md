@@ -77,10 +77,10 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 
 ### Financial Projections
 
-- [ ] **PROJ-01**: User can set APY per savings account and expected growth rate per investment account
-- [ ] **PROJ-02**: User can toggle reinvestment (compound vs simple) per account
-- [ ] **PROJ-03**: User can enable/disable which accounts are included in the projection
-- [ ] **PROJ-04**: User can model income: annual amount, monthly savings %, and per-account allocation
+- [x] **PROJ-01**: User can set APY per savings account and expected growth rate per investment account
+- [x] **PROJ-02**: User can toggle reinvestment (compound vs simple) per account
+- [x] **PROJ-03**: User can enable/disable which accounts are included in the projection
+- [x] **PROJ-04**: User can model income: annual amount, monthly savings %, and per-account allocation
 - [x] **PROJ-05**: Projection chart shows projected net worth over a custom time horizon
 - [x] **PROJ-06**: All projection settings persist in the database across sessions
 - [ ] **PROJ-07**: Projections page accessible from main navigation
@@ -171,10 +171,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ALERT-05 | Phase 8 | Pending |
 | ALERT-06 | Phase 8 | Pending |
 | ALERT-07 | Phase 8 | Complete |
-| PROJ-01 | Phase 9 | Pending |
-| PROJ-02 | Phase 9 | Pending |
-| PROJ-03 | Phase 9 | Pending |
-| PROJ-04 | Phase 9 | Pending |
+| PROJ-01 | Phase 9 | Complete |
+| PROJ-02 | Phase 9 | Complete |
+| PROJ-03 | Phase 9 | Complete |
+| PROJ-04 | Phase 9 | Complete |
 | PROJ-05 | Phase 9 | Complete |
 | PROJ-06 | Phase 9 | Complete |
 | PROJ-07 | Phase 9 | Pending |
