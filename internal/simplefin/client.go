@@ -20,14 +20,29 @@ type Org struct {
 	ID   string `json:"id"`
 }
 
+// Holding represents a single investment position within an account,
+// as returned by the SimpleFIN protocol when balances-only is not set.
+type Holding struct {
+	ID            string `json:"id"`
+	Created       int64  `json:"created"`
+	Currency      string `json:"currency"`
+	CostBasis     string `json:"cost_basis"`
+	Description   string `json:"description"`
+	MarketValue   string `json:"market_value"`
+	PurchasePrice string `json:"purchase_price"`
+	Shares        string `json:"shares"`
+	Symbol        string `json:"symbol"`
+}
+
 // Account represents a single financial account returned by the SimpleFIN protocol.
 type Account struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Currency    string `json:"currency"`
-	Balance     string `json:"balance"`
-	BalanceDate int64  `json:"balance-date"`
-	Org         Org    `json:"org"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Currency    string    `json:"currency"`
+	Balance     string    `json:"balance"`
+	BalanceDate int64     `json:"balance-date"`
+	Org         Org       `json:"org"`
+	Holdings    []Holding `json:"holdings,omitempty"`
 }
 
 // AccountSet is the top-level response from the SimpleFIN /accounts endpoint.
@@ -83,18 +98,32 @@ func IsSetupToken(input string) bool {
 	return trimmed != "" && !strings.Contains(trimmed, "://")
 }
 
-// FetchAccounts requests account data from the SimpleFIN /accounts endpoint.
+// FetchAccounts requests account data from the SimpleFIN /accounts endpoint
+// with balances-only=1 (no holdings data).
 //
 // accessURL is the full access URL (may contain embedded Basic Auth credentials,
 // e.g. https://user:pass@beta.bridge.simplefin.org/simplefin).
 //
 // If startDate is non-nil, a start-date query parameter is added (Unix epoch).
-// The balances-only=1 query parameter is always added.
+func FetchAccounts(accessURL string, startDate *time.Time) (*AccountSet, error) {
+	return fetchAccountData(accessURL, startDate, true)
+}
+
+// FetchAccountsWithHoldings requests account data from the SimpleFIN /accounts
+// endpoint WITHOUT balances-only=1, so the response includes holdings data
+// for investment accounts.
+func FetchAccountsWithHoldings(accessURL string, startDate *time.Time) (*AccountSet, error) {
+	return fetchAccountData(accessURL, startDate, false)
+}
+
+// fetchAccountData is the shared implementation for FetchAccounts and
+// FetchAccountsWithHoldings. When balancesOnly is true, the request includes
+// balances-only=1 (omitting holdings). When false, holdings are included.
 //
 // Basic Auth credentials embedded in accessURL are extracted and sent as an
 // Authorization header; they are removed from the request URL to prevent
 // credential leakage in logs.
-func FetchAccounts(accessURL string, startDate *time.Time) (*AccountSet, error) {
+func fetchAccountData(accessURL string, startDate *time.Time, balancesOnly bool) (*AccountSet, error) {
 	parsed, err := url.Parse(accessURL)
 	if err != nil {
 		return nil, fmt.Errorf("simplefin: invalid access URL: %w", err)
@@ -111,7 +140,9 @@ func FetchAccounts(accessURL string, startDate *time.Time) (*AccountSet, error) 
 
 	// Build query parameters.
 	q := parsed.Query()
-	q.Set("balances-only", "1")
+	if balancesOnly {
+		q.Set("balances-only", "1")
+	}
 	if startDate != nil {
 		q.Set("start-date", strconv.FormatInt(startDate.Unix(), 10))
 	}
