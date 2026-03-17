@@ -83,7 +83,7 @@ Requirements for the enhancements milestone. Each maps to roadmap phases.
 - [x] **PROJ-04**: User can model income: annual amount, monthly savings %, and per-account allocation
 - [x] **PROJ-05**: Projection chart shows projected net worth over a custom time horizon
 - [x] **PROJ-06**: All projection settings persist in the database across sessions
-- [ ] **PROJ-07**: Projections page accessible from main navigation
+- [x] **PROJ-07**: Projections page accessible from main navigation
 - [x] **PROJ-08**: Investment accounts display available holdings detail from SimpleFIN where supported (e.g., Vanguard funds)
 
 ## Future Requirements
@@ -177,7 +177,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROJ-04 | Phase 9 | Complete |
 | PROJ-05 | Phase 9 | Complete |
 | PROJ-06 | Phase 9 | Complete |
-| PROJ-07 | Phase 9 | Pending |
+| PROJ-07 | Phase 9 | Complete |
 | PROJ-08 | Phase 9 | Complete |
 
 **Coverage:**

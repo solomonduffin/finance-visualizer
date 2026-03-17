@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Enhancements
 status: executing
-stopped_at: Completed 09-04-PLAN.md
-last_updated: "2026-03-17T03:13:06Z"
-last_activity: 2026-03-17 — Completed Plan 09-04 (Configuration UI Components)
+stopped_at: Completed 09-05-PLAN.md
+last_updated: "2026-03-17T15:45:52Z"
+last_activity: 2026-03-17 — Completed Plan 09-05 (Page Assembly)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 18
-  completed_plans: 16
-  percent: 89
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Current Position
 
 Phase: 9 of 9 (Projection Engine)
-Plan: 5 of 5 (09-04 complete)
-Status: In Progress
-Last activity: 2026-03-17 — Completed Plan 09-04 (Configuration UI Components)
+Plan: 5 of 5 (09-05 complete)
+Status: Complete
+Last activity: 2026-03-17 — Completed Plan 09-05 (Page Assembly)
 
-Progress: [█████████░] 89% (16/18 plans complete through Phase 9.5)
+Progress: [██████████] 100% (18/18 plans complete through Phase 9)
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [█████████░] 89% (16/18 plans complete through Pha
 | Phase 09 P03 | 4min | 2 tasks | 6 files |
 | Phase 09 P02 | 4min | 2 tasks | 4 files |
 | Phase 09 P04 | 6min | 2 tasks | 8 files |
+| Phase 09 P05 | ~12h (w/checkpoint) | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,9 @@ Recent decisions affecting current work:
 - [Phase 09]: Miniature toggle w-8 h-[18px] for compound/simple in rate table (smaller than DashboardPreferences w-10 h-[22px])
 - [Phase 09]: Master include checkbox cascades to all holdings via separate callback calls
 - [Phase 09]: Allocation sum uses Math.round(sum*100)/100 for floating point precision in 100% comparison
+- [Phase 09]: Page owns all projection state, orchestrates child components via callback props with debounced auto-save
+- [Phase 09]: Default accounts/holdings to included=false so users explicitly opt-in to projection per account
+- [Phase 09]: Custom horizon reveals inline number input rather than modal or dropdown
 
 ### Pending Todos
 
@@ -126,6 +130,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T03:13:06Z
-Stopped at: Completed 09-04-PLAN.md
+Last session: 2026-03-17T15:45:52Z
+Stopped at: Completed 09-05-PLAN.md
 Resume file: None

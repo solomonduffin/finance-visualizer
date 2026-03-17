@@ -186,14 +186,14 @@ Plans:
   3. A projection chart shows projected net worth over a user-selected time horizon with a dashed line distinguishing projected from historical values
   4. All projection settings (rates, toggles, income allocations) persist in the database across sessions
   5. The projections page is accessible from the main navigation and investment accounts display available holdings detail from SimpleFIN where supported
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
-- [ ] 09-01-PLAN.md — Backend data layer: database migration (projection settings, holdings tables), SimpleFIN holdings fetch extension, sync process holdings persistence
-- [ ] 09-02-PLAN.md — Backend API: projection settings CRUD handlers (GET/PUT accounts with holdings, PUT income settings), frontend API client types and functions
-- [ ] 09-03-PLAN.md — Projection engine: client-side calculation (compound/simple interest, income contributions), ProjectionChart with solid-to-dashed transition, HorizonSelector
-- [ ] 09-04-PLAN.md — Configuration UI: RateConfigTable with per-account/per-holding rate controls, HoldingsRow expansion, IncomeModelingSection with allocation validation
-- [ ] 09-05-PLAN.md — Page assembly: Projections page with state management, debounced auto-save, live chart recalculation, App.tsx route and NavBar integration, visual verification
+- [x] 09-01-PLAN.md — Backend data layer: database migration (projection settings, holdings tables), SimpleFIN holdings fetch extension, sync process holdings persistence
+- [x] 09-02-PLAN.md — Backend API: projection settings CRUD handlers (GET/PUT accounts with holdings, PUT income settings), frontend API client types and functions
+- [x] 09-03-PLAN.md — Projection engine: client-side calculation (compound/simple interest, income contributions), ProjectionChart with solid-to-dashed transition, HorizonSelector
+- [x] 09-04-PLAN.md — Configuration UI: RateConfigTable with per-account/per-holding rate controls, HoldingsRow expansion, IncomeModelingSection with allocation validation
+- [x] 09-05-PLAN.md — Page assembly: Projections page with state management, debounced auto-save, live chart recalculation, App.tsx route and NavBar integration, visual verification
 
 ## Progress
 
@@ -211,4 +211,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 6. Operational Quick Wins | 3/3 | Complete   | 2026-03-16 | - |
 | 7. Analytics Expansion | v1.1 | 0/3 | Planned | - |
 | 8. Alert System | 2/4 | In Progress|  | - |
-| 9. Projection Engine | 4/5 | In Progress|  | - |
+| 9. Projection Engine | 5/5 | Complete   | 2026-03-17 | - |
