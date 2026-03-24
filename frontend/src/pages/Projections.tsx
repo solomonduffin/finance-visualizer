@@ -4,7 +4,7 @@ import {
   getProjectionSettings,
   saveProjectionSettings,
   saveIncomeSettings,
-  getNetWorth,
+  getProjectionHistory,
   type ProjectionAccountSetting,
   type ProjectionIncomeSettings,
 } from '../api/client'
@@ -54,27 +54,15 @@ export default function Projections() {
     }
   }, [])
 
-  // Data fetching on mount
+  // Data fetching on mount: load settings only.
+  // Historical data is fetched separately once we know which accounts are included.
   const load = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      const [settingsRes, netWorthRes] = await Promise.all([
-        getProjectionSettings(),
-        getNetWorth(180), // ~6 months of historical data
-      ])
+      const settingsRes = await getProjectionSettings()
       setAccounts(settingsRes.accounts)
       setIncome(settingsRes.income)
-      // Transform net worth points to total net worth per date
-      setHistoricalData(
-        netWorthRes.points.map((p) => ({
-          date: p.date,
-          value:
-            parseFloat(p.liquid) +
-            parseFloat(p.savings) +
-            parseFloat(p.investments),
-        })),
-      )
     } catch {
       setError('Something went wrong loading projection data')
     } finally {
@@ -85,6 +73,41 @@ export default function Projections() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Re-fetch historical data whenever the set of included accounts changes.
+  // This keeps the historical line scoped to the same accounts as the projection line.
+  useEffect(() => {
+    if (loading) return // Wait until initial settings load completes
+
+    const includedIds = accounts
+      .filter((a) => a.included)
+      .map((a) => a.account_id)
+
+    if (includedIds.length === 0) {
+      setHistoricalData([])
+      return
+    }
+
+    let cancelled = false
+    getProjectionHistory(180, includedIds)
+      .then((res) => {
+        if (cancelled) return
+        setHistoricalData(
+          res.points.map((p) => ({
+            date: p.date,
+            value: parseFloat(p.value),
+          })),
+        )
+      })
+      .catch(() => {
+        // History fetch failure is non-fatal: chart will show projection-only
+      })
+
+    return () => {
+      cancelled = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts, loading])
 
   // Parse allocation_json safely
   function parseAllocationJson(json: string): Record<string, number> {

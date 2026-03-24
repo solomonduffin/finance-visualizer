@@ -116,6 +116,56 @@ func TestLoginHandler_EmptyBody(t *testing.T) {
 	}
 }
 
+// TestPasswordHashUpsert_UpdatesOnRestart verifies that the password hash upsert
+// SQL (as used in cmd/server/main.go) replaces the stored hash when the env var changes.
+// This is a regression test for a bug where INSERT OR IGNORE silently ignored new passwords.
+func TestPasswordHashUpsert_UpdatesOnRestart(t *testing.T) {
+	auth.Init("test-secret")
+	database := setupTestDB(t, "oldpassword")
+
+	// Verify old password works
+	body := strings.NewReader(`{"password":"oldpassword"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
+	w := httptest.NewRecorder()
+	handlers.Login(database)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for old password, got %d", w.Code)
+	}
+
+	// Simulate "restart with new password" by upserting the hash using ON CONFLICT DO UPDATE
+	// (this is the fixed SQL from cmd/server/main.go)
+	newHash, err := bcrypt.GenerateFromPassword([]byte("newpassword"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash new password: %v", err)
+	}
+	_, err = database.Exec(
+		`INSERT INTO settings (key, value) VALUES ('password_hash', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		string(newHash),
+	)
+	if err != nil {
+		t.Fatalf("upsert password hash: %v", err)
+	}
+
+	// Old password should now fail
+	body = strings.NewReader(`{"password":"oldpassword"}`)
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
+	w = httptest.NewRecorder()
+	handlers.Login(database)(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for old password after upsert, got %d", w.Code)
+	}
+
+	// New password should work
+	body = strings.NewReader(`{"password":"newpassword"}`)
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
+	w = httptest.NewRecorder()
+	handlers.Login(database)(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for new password after upsert, got %d", w.Code)
+	}
+}
+
 func TestLoginHandler_MalformedJSON(t *testing.T) {
 	auth.Init("test-secret")
 	database := setupTestDB(t, "correctpassword")

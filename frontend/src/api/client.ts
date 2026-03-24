@@ -596,6 +596,36 @@ export async function saveProjectionSettings(data: SaveProjectionSettingsRequest
   if (!res.ok) throw new Error('Failed to save projection settings')
 }
 
+// ---- Projection History ----
+
+export interface ProjectionHistoryPoint {
+  date: string
+  value: string
+}
+
+export interface ProjectionHistoryResponse {
+  points: ProjectionHistoryPoint[]
+}
+
+/**
+ * GET /api/projections/history?days=N&account_ids=id1,id2,...
+ * Returns per-date totals (LOCF sum) for the specified account IDs over the last N days.
+ * Used by the Projections chart to show historical data scoped to included accounts only.
+ */
+export async function getProjectionHistory(
+  days: number,
+  accountIds: string[],
+): Promise<ProjectionHistoryResponse> {
+  if (accountIds.length === 0) return { points: [] }
+  const params = new URLSearchParams({
+    days: String(days),
+    account_ids: accountIds.join(','),
+  })
+  const res = await fetch(`/api/projections/history?${params}`, { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch projection history')
+  return res.json()
+}
+
 /**
  * PUT /api/projections/income
  * Persists income modeling settings (enabled, annual income, savings pct, allocation).

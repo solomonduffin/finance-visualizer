@@ -64,21 +64,44 @@ func GetBalanceHistory(database *sql.DB) http.HandlerFunc {
 		}
 
 		// Build SQL query. Only include account types that map to dashboard panels.
-		// Use DATE() to normalize balance_date to YYYY-MM-DD string format.
-		// Use COALESCE for effective type and filter out hidden accounts.
+		// Use COALESCE with group panel_type for effective type (matching summary.go logic)
+		// and filter out hidden accounts.
+		//
+		// LOCF (last observation carried forward): for each distinct date D in the snapshot
+		// table, each eligible account contributes its most recent balance on or before D.
+		// This mirrors summary.go's MAX(balance_date) approach so that an account whose last
+		// sync was yesterday still appears in today's totals.
+		//
+		// Structure:
+		//   dates subquery  – distinct calendar days that appear in balance_snapshots
+		//   CROSS JOIN accounts  – every visible, panel-eligible account × every date
+		//   correlated subquery  – latest balance for that account on or before that date
+		//   EXISTS filter        – skip (account, date) pairs before the account's first snapshot
 		query := `
-			SELECT DATE(bs.balance_date),
-			       COALESCE(a.account_type_override, a.account_type) AS effective_type,
-			       bs.balance
-			FROM balance_snapshots bs
-			JOIN accounts a ON a.id = bs.account_id
+			SELECT d.bal_date,
+			       COALESCE(ag.panel_type, a.account_type_override, a.account_type) AS effective_type,
+			       (SELECT bs2.balance
+			        FROM balance_snapshots bs2
+			        WHERE bs2.account_id = a.id
+			          AND DATE(bs2.balance_date) <= d.bal_date
+			        ORDER BY bs2.balance_date DESC
+			        LIMIT 1) AS balance
+			FROM (SELECT DISTINCT DATE(balance_date) AS bal_date FROM balance_snapshots) AS d
+			CROSS JOIN accounts a
+			LEFT JOIN group_members gm ON gm.account_id = a.id
+			LEFT JOIN account_groups ag ON ag.id = gm.group_id
 			WHERE a.hidden_at IS NULL
-			  AND COALESCE(a.account_type_override, a.account_type) IN ('checking', 'credit', 'savings', 'investment')`
+			  AND COALESCE(ag.panel_type, a.account_type_override, a.account_type) IN ('checking', 'credit', 'savings', 'investment')
+			  AND EXISTS (
+			      SELECT 1 FROM balance_snapshots bs3
+			      WHERE bs3.account_id = a.id
+			        AND DATE(bs3.balance_date) <= d.bal_date
+			  )`
 
 		if days > 0 {
-			query += fmt.Sprintf(" AND bs.balance_date >= date('now', '-%d days')", days)
+			query += fmt.Sprintf(" AND d.bal_date >= date('now', '-%d days')", days)
 		}
-		query += " ORDER BY bs.balance_date ASC, effective_type"
+		query += " ORDER BY d.bal_date ASC, effective_type"
 
 		rows, err := database.QueryContext(r.Context(), query)
 		if err != nil {
@@ -92,13 +115,21 @@ func GetBalanceHistory(database *sql.DB) http.HandlerFunc {
 		dayMap := map[string]*dayAccumulator{}
 
 		for rows.Next() {
-			var balanceDate, effectiveType, balance string
-			if err := rows.Scan(&balanceDate, &effectiveType, &balance); err != nil {
+			var balanceDate, effectiveType string
+			var balanceNull sql.NullString
+			if err := rows.Scan(&balanceDate, &effectiveType, &balanceNull); err != nil {
 				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 				return
 			}
 
-			amount, err := decimal.NewFromString(balance)
+			// Skip rows where the correlated subquery returned NULL (account has no
+			// snapshot on or before this date — the EXISTS filter should prevent this,
+			// but guard defensively).
+			if !balanceNull.Valid {
+				continue
+			}
+
+			amount, err := decimal.NewFromString(balanceNull.String)
 			if err != nil {
 				// Skip rows with invalid balance values
 				continue

@@ -56,23 +56,46 @@ func GetNetWorth(database *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Build SQL query.
+		// Build SQL query using LOCF (last observation carried forward).
+		//
+		// For each distinct calendar date D in balance_snapshots, every eligible
+		// account contributes its most recent balance on or before D (not just the
+		// balance on D itself). This mirrors the history.go approach and ensures
+		// that an account whose last sync was yesterday still appears in today's
+		// totals with its correct balance.
+		//
+		// Structure:
+		//   dates subquery  – distinct calendar days in balance_snapshots
+		//   CROSS JOIN accounts – every visible, panel-eligible account x every date
+		//   correlated subquery – latest balance for that account on or before that date
+		//   EXISTS filter       – skip (account, date) pairs before the account's first snapshot
+		//
 		// For grouped accounts, use the group's panel_type for panel assignment.
 		query := `
-			SELECT DATE(bs.balance_date) AS bd,
+			SELECT d.bal_date,
 			       COALESCE(ag.panel_type, a.account_type_override, a.account_type) AS effective_type,
-			       bs.balance
-			FROM balance_snapshots bs
-			JOIN accounts a ON a.id = bs.account_id
+			       (SELECT bs2.balance
+			        FROM balance_snapshots bs2
+			        WHERE bs2.account_id = a.id
+			          AND DATE(bs2.balance_date) <= d.bal_date
+			        ORDER BY bs2.balance_date DESC
+			        LIMIT 1) AS balance
+			FROM (SELECT DISTINCT DATE(balance_date) AS bal_date FROM balance_snapshots) AS d
+			CROSS JOIN accounts a
 			LEFT JOIN group_members gm ON gm.account_id = a.id
 			LEFT JOIN account_groups ag ON ag.id = gm.group_id
 			WHERE a.hidden_at IS NULL
-			  AND COALESCE(ag.panel_type, a.account_type_override, a.account_type) IN ('checking', 'credit', 'savings', 'investment')`
+			  AND COALESCE(ag.panel_type, a.account_type_override, a.account_type) IN ('checking', 'credit', 'savings', 'investment')
+			  AND EXISTS (
+			      SELECT 1 FROM balance_snapshots bs3
+			      WHERE bs3.account_id = a.id
+			        AND DATE(bs3.balance_date) <= d.bal_date
+			  )`
 
 		if days > 0 {
-			query += fmt.Sprintf(" AND DATE(bs.balance_date) >= DATE('now', '-%d days')", days)
+			query += fmt.Sprintf(" AND d.bal_date >= DATE('now', '-%d days')", days)
 		}
-		query += " ORDER BY bd, effective_type"
+		query += " ORDER BY d.bal_date, effective_type"
 
 		rows, err := database.QueryContext(r.Context(), query)
 		if err != nil {
@@ -86,13 +109,21 @@ func GetNetWorth(database *sql.DB) http.HandlerFunc {
 		dayMap := map[string]*dayAccumulator{}
 
 		for rows.Next() {
-			var balanceDate, effectiveType, balance string
-			if err := rows.Scan(&balanceDate, &effectiveType, &balance); err != nil {
+			var balanceDate, effectiveType string
+			var balanceNull sql.NullString
+			if err := rows.Scan(&balanceDate, &effectiveType, &balanceNull); err != nil {
 				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 				return
 			}
 
-			amount, err := decimal.NewFromString(balance)
+			// Skip rows where the correlated subquery returned NULL (account has no
+			// snapshot on or before this date — the EXISTS filter should prevent this,
+			// but guard defensively).
+			if !balanceNull.Valid {
+				continue
+			}
+
+			amount, err := decimal.NewFromString(balanceNull.String)
 			if err != nil {
 				continue // skip invalid balance values
 			}

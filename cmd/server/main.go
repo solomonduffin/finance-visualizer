@@ -60,10 +60,11 @@ func main() {
 	}
 	slog.Info("migrations complete")
 
-	// Seed the password hash into the settings table if not already present.
-	// This uses INSERT OR IGNORE so existing values are never overwritten.
+	// Upsert the password hash into the settings table.
+	// Uses ON CONFLICT to always update the stored hash when the env var changes.
 	_, err = database.Exec(
-		`INSERT OR IGNORE INTO settings (key, value) VALUES ('password_hash', ?)`,
+		`INSERT INTO settings (key, value) VALUES ('password_hash', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		cfg.PasswordHash,
 	)
 	if err != nil {

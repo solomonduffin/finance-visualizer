@@ -201,8 +201,15 @@ func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) err
 		return fmt.Errorf("invalid balance %q: %w", acct.Balance, err)
 	}
 
-	// Derive balance_date from Unix epoch.
-	balanceDate := time.Unix(acct.BalanceDate, 0).UTC().Format("2006-01-02")
+	// Always use today's wall-clock date (UTC) as the snapshot date.
+	//
+	// SimpleFIN's BalanceDate is the bank's *last balance-update* timestamp,
+	// which can lag by several days when a bank hasn't posted new activity.
+	// Using BalanceDate caused every sync to overwrite that stale past-date
+	// snapshot with the current balance, corrupting historical graph data.
+	// Using today's date means each sync only touches the current day's slot;
+	// past slots remain as they were recorded on the day the sync ran.
+	balanceDate := time.Now().UTC().Format("2006-01-02")
 
 	// Upsert account. Only system-owned columns are updated on conflict.
 	// User-owned columns (display_name, hidden_at, account_type_override) are preserved.
@@ -221,11 +228,16 @@ func processAccount(ctx context.Context, db *sql.DB, acct simplefin.Account) err
 		return fmt.Errorf("upsert account %q: %w", acct.ID, err)
 	}
 
-	// Upsert snapshot — update balance if a snapshot for this date already exists.
+	// Upsert snapshot — update balance and fetched_at if a snapshot for this
+	// date already exists (e.g. multiple syncs on the same calendar day).
+	// fetched_at is updated on each conflict so it tracks the most recent
+	// write time, enabling future audits of when each balance value was set.
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO balance_snapshots(account_id, balance, balance_date)
 		VALUES(?, ?, ?)
-		ON CONFLICT(account_id, balance_date) DO UPDATE SET balance=excluded.balance
+		ON CONFLICT(account_id, balance_date) DO UPDATE SET
+			balance=excluded.balance,
+			fetched_at=CURRENT_TIMESTAMP
 	`, acct.ID, acct.Balance, balanceDate)
 	if err != nil {
 		return fmt.Errorf("insert snapshot for %q: %w", acct.ID, err)

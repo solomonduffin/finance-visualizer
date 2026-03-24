@@ -28,7 +28,7 @@ vi.mock('../hooks/useDarkMode', () => ({
 }))
 
 const mockGetProjectionSettings = vi.mocked(client.getProjectionSettings)
-const mockGetNetWorth = vi.mocked(client.getNetWorth)
+const mockGetProjectionHistory = vi.mocked(client.getProjectionHistory)
 
 const sampleSettings: client.ProjectionSettingsResponse = {
   accounts: [
@@ -61,19 +61,12 @@ const sampleSettings: client.ProjectionSettingsResponse = {
   },
 }
 
-const sampleNetWorth: client.NetWorthResponse = {
+const sampleProjectionHistory: client.ProjectionHistoryResponse = {
   points: [
-    { date: '2026-01-01', liquid: '5000', savings: '18000', investments: '10000' },
-    { date: '2026-02-01', liquid: '5100', savings: '19000', investments: '10500' },
-    { date: '2026-03-01', liquid: '5000', savings: '20000', investments: '11000' },
+    { date: '2026-01-01', value: '23000.00' },
+    { date: '2026-02-01', value: '24100.00' },
+    { date: '2026-03-01', value: '25000.00' },
   ],
-  stats: {
-    current_net_worth: '36000.00',
-    period_change_dollars: '3000.00',
-    period_change_pct: '9.09',
-    all_time_high: '36000.00',
-    all_time_high_date: '2026-03-01',
-  },
 }
 
 function renderProjections() {
@@ -92,7 +85,7 @@ describe('Projections page', () => {
   it('shows loading skeleton elements initially', () => {
     // Never resolve the promises to keep loading state
     mockGetProjectionSettings.mockReturnValue(new Promise(() => {}))
-    mockGetNetWorth.mockReturnValue(new Promise(() => {}))
+    mockGetProjectionHistory.mockReturnValue(new Promise(() => {}))
 
     renderProjections()
 
@@ -105,7 +98,7 @@ describe('Projections page', () => {
 
   it('renders page title and all components after fetch resolves', async () => {
     mockGetProjectionSettings.mockResolvedValue(sampleSettings)
-    mockGetNetWorth.mockResolvedValue(sampleNetWorth)
+    mockGetProjectionHistory.mockResolvedValue(sampleProjectionHistory)
 
     renderProjections()
 
@@ -129,7 +122,7 @@ describe('Projections page', () => {
         allocation_json: '{}',
       },
     })
-    mockGetNetWorth.mockResolvedValue({ points: [], stats: null })
+    mockGetProjectionHistory.mockResolvedValue({ points: [] })
 
     renderProjections()
 
@@ -144,7 +137,7 @@ describe('Projections page', () => {
 
   it('shows error message with retry button on fetch failure', async () => {
     mockGetProjectionSettings.mockRejectedValue(new Error('Network error'))
-    mockGetNetWorth.mockRejectedValue(new Error('Network error'))
+    mockGetProjectionHistory.mockResolvedValue({ points: [] })
 
     renderProjections()
 
@@ -156,16 +149,38 @@ describe('Projections page', () => {
     expect(screen.getByText('Retry')).toBeInTheDocument()
   })
 
-  it('calls getProjectionSettings and getNetWorth on mount', async () => {
+  it('calls getProjectionSettings on mount and getProjectionHistory with included account IDs', async () => {
     mockGetProjectionSettings.mockResolvedValue(sampleSettings)
-    mockGetNetWorth.mockResolvedValue(sampleNetWorth)
+    mockGetProjectionHistory.mockResolvedValue(sampleProjectionHistory)
 
     renderProjections()
 
     await waitFor(() => {
       expect(mockGetProjectionSettings).toHaveBeenCalledTimes(1)
     })
-    expect(mockGetNetWorth).toHaveBeenCalledTimes(1)
-    expect(mockGetNetWorth).toHaveBeenCalledWith(180)
+
+    // getProjectionHistory should be called with 180 days and the included account IDs
+    await waitFor(() => {
+      expect(mockGetProjectionHistory).toHaveBeenCalledTimes(1)
+    })
+    expect(mockGetProjectionHistory).toHaveBeenCalledWith(180, ['acct-1', 'acct-2'])
+  })
+
+  it('uses only included account IDs for history fetch', async () => {
+    const settingsWithOneIncluded: client.ProjectionSettingsResponse = {
+      ...sampleSettings,
+      accounts: [
+        { ...sampleSettings.accounts[0], included: true },
+        { ...sampleSettings.accounts[1], included: false },
+      ],
+    }
+    mockGetProjectionSettings.mockResolvedValue(settingsWithOneIncluded)
+    mockGetProjectionHistory.mockResolvedValue({ points: [] })
+
+    renderProjections()
+
+    await waitFor(() => {
+      expect(mockGetProjectionHistory).toHaveBeenCalledWith(180, ['acct-1'])
+    })
   })
 })

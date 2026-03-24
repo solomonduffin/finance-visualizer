@@ -1144,6 +1144,108 @@ func TestSyncOnce_EmptyHoldingsGraceful(t *testing.T) {
 	}
 }
 
+// TestSyncOnce_SnapshotUsesTodaysDate is a regression test for a bug where
+// processAccount stored the bank's BalanceDate (their last-update timestamp,
+// which could lag by days) as balance_date rather than today's wall-clock date.
+// The consequence: every sync overwrote the stale past-date snapshot with the
+// current balance, corrupting historical graph data.
+//
+// Fix: processAccount now uses time.Now().UTC() so each sync always writes to
+// today's slot. Past dates are immutable.
+func TestSyncOnce_SnapshotUsesTodaysDate(t *testing.T) {
+	database := openTestDB(t)
+	ctx := context.Background()
+
+	// Bank's balance-date is a fixed past timestamp (Nov 14 2023 = 1700000000).
+	accounts := []map[string]any{
+		{
+			"id":           "acct-today",
+			"name":         "Checking",
+			"currency":     "USD",
+			"balance":      "1234.00",
+			"balance-date": 1700000000, // Nov 14 2023 — a stale bank timestamp
+			"org":          map[string]any{"name": "Bank", "id": "bank"},
+		},
+	}
+
+	srv := newMockServer(t, accounts)
+	setAccessURL(t, database, srv.URL+"/simplefin")
+
+	if _, err := finSync.SyncOnce(ctx, database, ""); err != nil {
+		t.Fatalf("SyncOnce error: %v", err)
+	}
+
+	// The snapshot must be stored with today's UTC date, not the bank's
+	// stale BalanceDate (Nov 14 2023).
+	// Use DATE() in the query to normalize the stored value to YYYY-MM-DD regardless
+	// of how the modernc SQLite driver formats DATE column values on scan.
+	today := time.Now().UTC().Format("2006-01-02")
+	var storedDate string
+	if err := database.QueryRow(
+		`SELECT DATE(balance_date) FROM balance_snapshots WHERE account_id='acct-today'`,
+	).Scan(&storedDate); err != nil {
+		t.Fatalf("query balance_date: %v", err)
+	}
+	if storedDate != today {
+		t.Errorf("expected balance_date=%q (today), got %q (bank's stale date)", today, storedDate)
+	}
+}
+
+// TestSnapshotConflict_UpdatesFetchedAt verifies that the ON CONFLICT UPDATE
+// clause in the snapshot upsert SQL updates fetched_at (not just balance).
+// This ensures the audit trail records the last write time for each balance.
+//
+// We test the SQL directly (without a full sync) to avoid sub-second timing
+// issues: we insert a row with a known old fetched_at, then re-upsert and
+// verify fetched_at changed.
+func TestSnapshotConflict_UpdatesFetchedAt(t *testing.T) {
+	database := openTestDB(t)
+
+	_, err := database.Exec(`INSERT INTO accounts (id, name, account_type, currency) VALUES ('acct-fat', 'Checking', 'checking', 'USD')`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Insert initial snapshot with a known past fetched_at.
+	today := time.Now().UTC().Format("2006-01-02")
+	_, err = database.Exec(`
+		INSERT INTO balance_snapshots(account_id, balance, balance_date, fetched_at)
+		VALUES('acct-fat', '100.00', ?, '2000-01-01T00:00:00Z')
+	`, today)
+	if err != nil {
+		t.Fatalf("insert snapshot: %v", err)
+	}
+
+	// Re-upsert using the same ON CONFLICT clause as processAccount.
+	_, err = database.Exec(`
+		INSERT INTO balance_snapshots(account_id, balance, balance_date)
+		VALUES('acct-fat', '200.00', ?)
+		ON CONFLICT(account_id, balance_date) DO UPDATE SET
+			balance=excluded.balance,
+			fetched_at=CURRENT_TIMESTAMP
+	`, today)
+	if err != nil {
+		t.Fatalf("upsert snapshot: %v", err)
+	}
+
+	var fetchedAt, balance string
+	if err := database.QueryRow(
+		`SELECT fetched_at, balance FROM balance_snapshots WHERE account_id='acct-fat'`,
+	).Scan(&fetchedAt, &balance); err != nil {
+		t.Fatalf("query snapshot: %v", err)
+	}
+
+	// Balance must be updated.
+	if balance != "200.00" {
+		t.Errorf("expected balance 200.00, got %s", balance)
+	}
+
+	// fetched_at must no longer be the old sentinel value.
+	if fetchedAt == "2000-01-01T00:00:00Z" {
+		t.Error("expected fetched_at to be updated by ON CONFLICT, but it still has the old sentinel value")
+	}
+}
+
 func TestSyncOnce_UsesWithHoldings(t *testing.T) {
 	database := openTestDB(t)
 	ctx := context.Background()

@@ -418,6 +418,58 @@ func TestGetBalanceHistory_TypeOverride(t *testing.T) {
 	}
 }
 
+func TestGetBalanceHistory_GroupPanelTypeUsed(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	// Investment account that gets placed in a savings group.
+	// Without the fix, history would categorize it as "investment" (from account_type).
+	// With the fix, history should categorize it as "savings" (from group panel_type).
+	seedAccounts(t, database, []map[string]string{
+		{"id": "inv1", "name": "Roth IRA", "account_type": "investment", "currency": "USD", "org_name": ""},
+		{"id": "sav1", "name": "HYSA", "account_type": "savings", "currency": "USD", "org_name": ""},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "inv1", "balance": "5000.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav1", "balance": "2000.00", "balance_date": "2024-01-01"},
+	})
+
+	// Create a savings group and add the investment account to it.
+	_, err := database.Exec(`INSERT INTO account_groups (name, panel_type) VALUES ('Retirement', 'savings')`)
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	_, err = database.Exec(`INSERT INTO group_members (group_id, account_id) VALUES (1, 'inv1')`)
+	if err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/balance-history", nil)
+	w := httptest.NewRecorder()
+	handlers.GetBalanceHistory(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp historyResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// savings should include both: HYSA (2000) + Roth IRA via group (5000) = 7000
+	if len(resp.Savings) != 1 {
+		t.Fatalf("savings: expected 1 point, got %d", len(resp.Savings))
+	}
+	if resp.Savings[0].Balance != "7000.00" {
+		t.Errorf("savings balance: got %q, want \"7000.00\" (grouped investment counted as savings)", resp.Savings[0].Balance)
+	}
+
+	// investments should be empty since inv1 is in a savings group
+	if len(resp.Investments) != 0 {
+		t.Errorf("investments: expected 0 points, got %d (grouped account should not appear here)", len(resp.Investments))
+	}
+}
+
 func TestGetBalanceHistory_TimeSeriesOrdering(t *testing.T) {
 	database := setupFinanceTestDB(t)
 
@@ -453,5 +505,66 @@ func TestGetBalanceHistory_TimeSeriesOrdering(t *testing.T) {
 		if pt.Balance != expectedBalances[i] {
 			t.Errorf("liquid[%d].Balance: got %q, want %q", i, pt.Balance, expectedBalances[i])
 		}
+	}
+}
+
+// TestGetBalanceHistory_CreditCarriedForwardWhenNoSnapshotOnDate is the regression
+// test for the LOCF (last-observation-carried-forward) bug: when a checking account
+// has a snapshot for day D but the credit card's most recent snapshot is from day D-1,
+// the credit card balance must still be subtracted from the liquid total on day D.
+//
+// Before the fix, history.go joined balance_snapshots by exact date, so the credit card
+// would not appear on day D and the liquid total would equal checking alone.
+func TestGetBalanceHistory_CreditCarriedForwardWhenNoSnapshotOnDate(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "crd1", "name": "Chase Credit", "account_type": "credit", "currency": "USD", "org_name": ""},
+	})
+
+	// chk1 has snapshots on both days.
+	// crd1 only has a snapshot on day 1 — it did NOT sync on day 2.
+	// On day 2, the liquid total must still subtract the credit card balance from day 1.
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "4700.89", "balance_date": "2024-01-01"},
+		{"account_id": "crd1", "balance": "-3946.66", "balance_date": "2024-01-01"},
+		{"account_id": "chk1", "balance": "4700.89", "balance_date": "2024-01-02"},
+		// crd1 has NO snapshot for 2024-01-02 — simulates credit card not syncing that day
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/balance-history", nil)
+	w := httptest.NewRecorder()
+	handlers.GetBalanceHistory(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp historyResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	// Both dates should appear in liquid (checking exists on both).
+	if len(resp.Liquid) != 2 {
+		t.Fatalf("liquid: expected 2 points, got %d: %v", len(resp.Liquid), resp.Liquid)
+	}
+
+	// Day 1: checking(4700.89) + credit(-3946.66) = 754.23
+	if resp.Liquid[0].Date != "2024-01-01" {
+		t.Errorf("liquid[0].Date: got %q, want \"2024-01-01\"", resp.Liquid[0].Date)
+	}
+	if resp.Liquid[0].Balance != "754.23" {
+		t.Errorf("liquid[0].Balance: got %q, want \"754.23\"", resp.Liquid[0].Balance)
+	}
+
+	// Day 2: credit card has no new snapshot; LOCF carries forward -3946.66 from day 1.
+	// liquid = checking(4700.89) + credit(-3946.66) = 754.23 (NOT 4700.89).
+	if resp.Liquid[1].Date != "2024-01-02" {
+		t.Errorf("liquid[1].Date: got %q, want \"2024-01-02\"", resp.Liquid[1].Date)
+	}
+	if resp.Liquid[1].Balance != "754.23" {
+		t.Errorf("liquid[1].Balance: got %q, want \"754.23\" (credit carried forward from day 1, not dropped)", resp.Liquid[1].Balance)
 	}
 }

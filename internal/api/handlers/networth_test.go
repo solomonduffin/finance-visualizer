@@ -458,3 +458,74 @@ func TestNetWorth_DefaultDays90(t *testing.T) {
 		t.Errorf("default days=90 should filter old data, got %d points", len(resp.Points))
 	}
 }
+
+// TestNetWorth_LOCFCreditCardMissingToday verifies that LOCF (last observation
+// carried forward) is applied at the per-account level in the SQL query.
+//
+// Scenario: checking has a snapshot on day 2, but credit card only has a
+// snapshot on day 1. Day 2's liquid total must include the credit card's
+// day-1 balance carried forward, not just the checking balance.
+//
+// This is the regression test for the bug where the Net Worth tab showed
+// $11,824 instead of $8,394 — because the credit card (which adds a negative
+// balance to liquid) was absent from the day's SQL results when it had no
+// same-day snapshot.
+func TestNetWorth_LOCFCreditCardMissingToday(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Checking", "account_type": "checking", "currency": "USD", "org_name": ""},
+		{"id": "crd1", "name": "Credit Card", "account_type": "credit", "currency": "USD", "org_name": ""},
+	})
+	// Day 1: both checking and credit have snapshots.
+	// Day 2: only checking has a snapshot; credit card has no same-day snapshot.
+	// LOCF must carry credit's day-1 balance into day-2 liquid calculation.
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "4700.00", "balance_date": "2024-01-01"},
+		{"account_id": "crd1", "balance": "-3946.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk1", "balance": "4700.00", "balance_date": "2024-01-02"},
+		// No credit card snapshot on 2024-01-02
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/net-worth?days=0", nil)
+	w := httptest.NewRecorder()
+	handlers.GetNetWorth(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp netWorthResponseJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Points) != 2 {
+		t.Fatalf("expected 2 points, got %d", len(resp.Points))
+	}
+
+	// Day 1: liquid = 4700 + (-3946) = 754
+	if resp.Points[0].Date != "2024-01-01" {
+		t.Errorf("point[0].date: got %q, want 2024-01-01", resp.Points[0].Date)
+	}
+	if resp.Points[0].Liquid != "754.00" {
+		t.Errorf("point[0].liquid: got %q, want 754.00 (checking + credit)", resp.Points[0].Liquid)
+	}
+
+	// Day 2: checking = 4700, credit LOCF carries forward -3946 → liquid = 754
+	// Without LOCF fix, this would return "4700.00" (credit excluded).
+	if resp.Points[1].Date != "2024-01-02" {
+		t.Errorf("point[1].date: got %q, want 2024-01-02", resp.Points[1].Date)
+	}
+	if resp.Points[1].Liquid != "754.00" {
+		t.Errorf("point[1].liquid: got %q, want 754.00 (credit carried forward from day 1); LOCF not working", resp.Points[1].Liquid)
+	}
+
+	// Stats current net worth should also use carried-forward credit
+	if resp.Stats == nil {
+		t.Fatal("expected stats to be non-nil")
+	}
+	if resp.Stats.CurrentNetWorth != "754.00" {
+		t.Errorf("current_net_worth: got %q, want 754.00", resp.Stats.CurrentNetWorth)
+	}
+}

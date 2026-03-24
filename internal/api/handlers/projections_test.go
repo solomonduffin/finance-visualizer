@@ -400,3 +400,168 @@ func TestGetProjectionSettings_ExcludesHidden(t *testing.T) {
 		t.Errorf("expected chk1, got %s", resp.Accounts[0].AccountID)
 	}
 }
+
+// ─── GetProjectionHistory tests ──────────────────────────────────────────────
+
+type projectionHistoryJSON struct {
+	Points []struct {
+		Date  string `json:"date"`
+		Value string `json:"value"`
+	} `json:"points"`
+}
+
+// TestGetProjectionHistory_SumsOnlyIncludedAccounts verifies that only the requested
+// account IDs are summed and accounts not in account_ids are excluded.
+func TestGetProjectionHistory_SumsOnlyIncludedAccounts(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Checking", "account_type": "checking", "currency": "USD", "org_name": "Bank"},
+		{"id": "sav1", "name": "Savings", "account_type": "savings", "currency": "USD", "org_name": "Bank"},
+		{"id": "crd1", "name": "Credit", "account_type": "credit", "currency": "USD", "org_name": "Bank"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav1", "balance": "5000.00", "balance_date": "2024-01-01"},
+		{"account_id": "crd1", "balance": "-200.00", "balance_date": "2024-01-01"},
+	})
+
+	r := chi.NewRouter()
+	r.Get("/api/projections/history", handlers.GetProjectionHistory(database))
+
+	// Request only chk1 and sav1 — crd1 should be excluded.
+	req := httptest.NewRequest(http.MethodGet, "/api/projections/history?days=0&account_ids=chk1,sav1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp projectionHistoryJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Points) != 1 {
+		t.Fatalf("expected 1 point, got %d", len(resp.Points))
+	}
+	if resp.Points[0].Date != "2024-01-01" {
+		t.Errorf("expected date 2024-01-01, got %s", resp.Points[0].Date)
+	}
+	// 1000.00 + 5000.00 = 6000.00 (not 5800.00 which would include credit)
+	if resp.Points[0].Value != "6000.00" {
+		t.Errorf("expected value 6000.00, got %s", resp.Points[0].Value)
+	}
+}
+
+// TestGetProjectionHistory_LOCFCarryForward verifies that an account with no snapshot
+// on a later date carries forward its most recent balance.
+func TestGetProjectionHistory_LOCFCarryForward(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Checking", "account_type": "checking", "currency": "USD", "org_name": "Bank"},
+		{"id": "sav1", "name": "Savings", "account_type": "savings", "currency": "USD", "org_name": "Bank"},
+	})
+	// chk1 has snapshots on both days; sav1 only on day 1.
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "sav1", "balance": "5000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk1", "balance": "1200.00", "balance_date": "2024-01-02"},
+	})
+
+	r := chi.NewRouter()
+	r.Get("/api/projections/history", handlers.GetProjectionHistory(database))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/projections/history?days=0&account_ids=chk1,sav1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp projectionHistoryJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Points) != 2 {
+		t.Fatalf("expected 2 points, got %d: %+v", len(resp.Points), resp.Points)
+	}
+	// Day 1: 1000 + 5000 = 6000
+	if resp.Points[0].Date != "2024-01-01" || resp.Points[0].Value != "6000.00" {
+		t.Errorf("day1: expected {2024-01-01, 6000.00}, got {%s, %s}", resp.Points[0].Date, resp.Points[0].Value)
+	}
+	// Day 2: chk1=1200 (new snapshot) + sav1=5000 (LOCF from day1) = 6200
+	if resp.Points[1].Date != "2024-01-02" || resp.Points[1].Value != "6200.00" {
+		t.Errorf("day2: expected {2024-01-02, 6200.00}, got {%s, %s}", resp.Points[1].Date, resp.Points[1].Value)
+	}
+}
+
+// TestGetProjectionHistory_EmptyAccountIDs verifies that an empty account_ids param
+// returns an empty points array.
+func TestGetProjectionHistory_EmptyAccountIDs(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	r := chi.NewRouter()
+	r.Get("/api/projections/history", handlers.GetProjectionHistory(database))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/projections/history?days=0", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp projectionHistoryJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Points) != 0 {
+		t.Errorf("expected 0 points for empty account_ids, got %d", len(resp.Points))
+	}
+}
+
+// TestGetProjectionHistory_ExcludesHiddenAccounts verifies that hidden accounts
+// are excluded even if their ID is listed in account_ids.
+func TestGetProjectionHistory_ExcludesHiddenAccounts(t *testing.T) {
+	database := setupFinanceTestDB(t)
+
+	seedAccounts(t, database, []map[string]string{
+		{"id": "chk1", "name": "Visible", "account_type": "checking", "currency": "USD", "org_name": "Bank"},
+		{"id": "chk2", "name": "Hidden", "account_type": "checking", "currency": "USD", "org_name": "Bank", "hidden_at": "2024-01-01T00:00:00Z"},
+	})
+	seedSnapshots(t, database, []map[string]string{
+		{"account_id": "chk1", "balance": "1000.00", "balance_date": "2024-01-01"},
+		{"account_id": "chk2", "balance": "9999.00", "balance_date": "2024-01-01"},
+	})
+
+	r := chi.NewRouter()
+	r.Get("/api/projections/history", handlers.GetProjectionHistory(database))
+
+	// Request both accounts — chk2 is hidden and should be excluded.
+	req := httptest.NewRequest(http.MethodGet, "/api/projections/history?days=0&account_ids=chk1,chk2", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp projectionHistoryJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if len(resp.Points) != 1 {
+		t.Fatalf("expected 1 point, got %d", len(resp.Points))
+	}
+	// Only chk1's balance — hidden chk2 excluded.
+	if resp.Points[0].Value != "1000.00" {
+		t.Errorf("expected 1000.00 (hidden account excluded), got %s", resp.Points[0].Value)
+	}
+}

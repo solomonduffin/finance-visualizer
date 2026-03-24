@@ -76,6 +76,7 @@ func NewRouter(tokenAuth *jwtauth.JWTAuth, database *sql.DB, jwtSecret string) h
 		r.Get("/api/projections/settings", handlers.GetProjectionSettings(database))
 		r.Put("/api/projections/settings", handlers.SaveProjectionSettings(database))
 		r.Put("/api/projections/income", handlers.SaveIncomeSettings(database))
+		r.Get("/api/projections/history", handlers.GetProjectionHistory(database))
 	})
 
 	return r

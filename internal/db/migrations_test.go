@@ -142,6 +142,68 @@ func TestMigrate_AccountTypeCheck(t *testing.T) {
 	}
 }
 
+// TestMigration006_DeletesStaleDateMismatchRows verifies the cleanup SQL from
+// migration 000006. Rows where DATE(fetched_at) != balance_date represent
+// snapshots inserted on a day different from the bank's reported balance date
+// (the stale-date bug). The migration must delete these and preserve correct ones.
+func TestMigration006_DeletesStaleDateMismatchRows(t *testing.T) {
+	database := openMigratedDB(t)
+
+	_, err := database.Exec(`INSERT INTO accounts (id, name, account_type) VALUES ('acc-clean', 'Checking', 'checking')`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Row A: balance_date matches the INSERT day (fetched_at) — should be KEPT.
+	// Use today's date so DATE(fetched_at) = balance_date.
+	_, err = database.Exec(`
+		INSERT INTO balance_snapshots (account_id, balance, balance_date, fetched_at)
+		VALUES ('acc-clean', '500.00', DATE('now'), CURRENT_TIMESTAMP)
+	`)
+	if err != nil {
+		t.Fatalf("insert matching row: %v", err)
+	}
+
+	// Row B: balance_date is a past date but fetched_at is today —
+	// represents the stale-bank-date bug (sync ran today, bank reported March 1).
+	// Should be DELETED.
+	_, err = database.Exec(`
+		INSERT INTO balance_snapshots (account_id, balance, balance_date, fetched_at)
+		VALUES ('acc-clean', '400.00', '2020-01-01', CURRENT_TIMESTAMP)
+	`)
+	if err != nil {
+		t.Fatalf("insert mismatched row: %v", err)
+	}
+
+	// Run the migration 006 cleanup SQL.
+	_, err = database.Exec(`DELETE FROM balance_snapshots WHERE DATE(fetched_at) != balance_date`)
+	if err != nil {
+		t.Fatalf("cleanup DELETE failed: %v", err)
+	}
+
+	// Row A (matching dates) must still exist.
+	var countGood int
+	if err := database.QueryRow(
+		`SELECT COUNT(*) FROM balance_snapshots WHERE account_id='acc-clean' AND balance='500.00'`,
+	).Scan(&countGood); err != nil {
+		t.Fatalf("count good row: %v", err)
+	}
+	if countGood != 1 {
+		t.Errorf("expected matching row to be preserved, got count=%d", countGood)
+	}
+
+	// Row B (mismatched dates) must be gone.
+	var countBad int
+	if err := database.QueryRow(
+		`SELECT COUNT(*) FROM balance_snapshots WHERE account_id='acc-clean' AND balance='400.00'`,
+	).Scan(&countBad); err != nil {
+		t.Fatalf("count bad row: %v", err)
+	}
+	if countBad != 0 {
+		t.Errorf("expected mismatched row to be deleted, got count=%d", countBad)
+	}
+}
+
 func TestMigrate_BalanceSnapshotUniqueConstraint(t *testing.T) {
 	database := openMigratedDB(t)
 

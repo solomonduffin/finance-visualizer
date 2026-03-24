@@ -3,7 +3,13 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/shopspring/decimal"
 )
 
 // projectionAccountSetting represents one account's projection configuration.
@@ -183,6 +189,140 @@ func GetProjectionSettings(db *sql.DB) http.HandlerFunc {
 			Accounts: accounts,
 			Income:   income,
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp) //nolint:errcheck
+	}
+}
+
+// projectionHistoryPoint is a single date + summed balance for the included accounts.
+type projectionHistoryPoint struct {
+	Date  string `json:"date"`
+	Value string `json:"value"`
+}
+
+// projectionHistoryResponse is the response for GET /api/projections/history.
+type projectionHistoryResponse struct {
+	Points []projectionHistoryPoint `json:"points"`
+}
+
+// GetProjectionHistory returns an http.HandlerFunc for GET /api/projections/history.
+//
+// Query parameters:
+//   - days=N   : limit to last N calendar days (default 180; 0 = all history)
+//   - account_ids=id1,id2,... : comma-separated account IDs to include
+//
+// For each distinct calendar date in balance_snapshots, sums the LOCF balance of
+// each specified account.  Accounts that have no snapshot on or before a given date
+// are excluded from that date's sum (same semantics as networth.go).
+// Hidden accounts are excluded regardless of account_ids.
+func GetProjectionHistory(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		resp := projectionHistoryResponse{Points: []projectionHistoryPoint{}}
+
+		// Parse ?days=N (default 180).
+		days := 180
+		if dStr := r.URL.Query().Get("days"); dStr != "" {
+			if d, err := strconv.Atoi(dStr); err == nil && d >= 0 {
+				days = d
+			}
+		}
+
+		// Parse ?account_ids=id1,id2,...
+		rawIDs := r.URL.Query().Get("account_ids")
+		if rawIDs == "" {
+			// No accounts specified: return empty points.
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp) //nolint:errcheck
+			return
+		}
+
+		ids := strings.Split(rawIDs, ",")
+		if len(ids) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp) //nolint:errcheck
+			return
+		}
+
+		// Build the IN clause placeholders.
+		placeholders := make([]string, len(ids))
+		args := make([]interface{}, len(ids))
+		for i, id := range ids {
+			placeholders[i] = "?"
+			args[i] = strings.TrimSpace(id)
+		}
+		inClause := strings.Join(placeholders, ", ")
+
+		// Use LOCF: for each distinct date in balance_snapshots, each specified
+		// non-hidden account contributes its most recent balance on or before that date.
+		query := fmt.Sprintf(`
+			SELECT d.bal_date,
+			       (SELECT bs2.balance
+			        FROM balance_snapshots bs2
+			        WHERE bs2.account_id = a.id
+			          AND DATE(bs2.balance_date) <= d.bal_date
+			        ORDER BY bs2.balance_date DESC
+			        LIMIT 1) AS balance
+			FROM (SELECT DISTINCT DATE(balance_date) AS bal_date FROM balance_snapshots) AS d
+			CROSS JOIN accounts a
+			WHERE a.id IN (%s)
+			  AND a.hidden_at IS NULL
+			  AND EXISTS (
+			      SELECT 1 FROM balance_snapshots bs3
+			      WHERE bs3.account_id = a.id
+			        AND DATE(bs3.balance_date) <= d.bal_date
+			  )`, inClause)
+
+		if days > 0 {
+			query += fmt.Sprintf(" AND d.bal_date >= DATE('now', '-%d days')", days)
+		}
+		query += " ORDER BY d.bal_date"
+
+		rows, err := db.QueryContext(r.Context(), query, args...)
+		if err != nil {
+			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		// Accumulate per-date sums.
+		dateOrder := []string{}
+		dateSums := map[string]decimal.Decimal{}
+
+		for rows.Next() {
+			var balDate string
+			var balNull sql.NullString
+			if err := rows.Scan(&balDate, &balNull); err != nil {
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+				return
+			}
+			if !balNull.Valid {
+				continue
+			}
+			amount, err := decimal.NewFromString(balNull.String)
+			if err != nil {
+				continue
+			}
+			if _, exists := dateSums[balDate]; !exists {
+				dateOrder = append(dateOrder, balDate)
+				dateSums[balDate] = decimal.Zero
+			}
+			dateSums[balDate] = dateSums[balDate].Add(amount)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			return
+		}
+
+		sort.Strings(dateOrder)
+		points := make([]projectionHistoryPoint, 0, len(dateOrder))
+		for _, date := range dateOrder {
+			points = append(points, projectionHistoryPoint{
+				Date:  date,
+				Value: dateSums[date].StringFixed(2),
+			})
+		}
+		resp.Points = points
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp) //nolint:errcheck

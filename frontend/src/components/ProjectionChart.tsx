@@ -102,6 +102,59 @@ function ProjectionTooltip({ active, payload, isDark }: ProjectionTooltipProps) 
   )
 }
 
+/**
+ * Builds the combined historical + projected data array for the chart.
+ *
+ * The bridge point where historical and projected meet uses `projectionData[0].value`
+ * (sum of included accounts only) as the projected starting value — NOT the last
+ * historical net worth. Using the historical net worth would double-count accounts
+ * that exist in the net worth but were not explicitly included in the projection.
+ *
+ * Exported for unit testing.
+ */
+export function buildCombinedData(
+  historicalData: Array<{ date: string; value: number }>,
+  projectionData: ProjectionPoint[],
+): CombinedPoint[] {
+  const combined: CombinedPoint[] = []
+
+  // Historical points
+  for (const h of historicalData) {
+    combined.push({ date: h.date, historical: h.value, projected: null })
+  }
+
+  // Bridge point: last historical connects to first projection
+  const todayStr =
+    historicalData.length > 0
+      ? historicalData[historicalData.length - 1].date
+      : projectionData.length > 0
+        ? projectionData[0].date
+        : ''
+
+  // If we have both datasets, add a bridge point where both values overlap.
+  // Use projectionData[0].value (sum of included accounts only) as the starting
+  // point for the projected series — NOT lastHistorical.value (full net worth).
+  // Using the historical value here would double-count accounts that are also in
+  // the net worth but were not explicitly included in the projection.
+  if (historicalData.length > 0 && projectionData.length > 0) {
+    const lastHistorical = historicalData[historicalData.length - 1]
+    // Replace the last historical point with a bridge point
+    combined[combined.length - 1] = {
+      date: lastHistorical.date,
+      historical: lastHistorical.value,
+      projected: projectionData[0].value,
+    }
+  }
+
+  // Projection points (skip the first one if it's the bridge date)
+  for (const p of projectionData) {
+    if (p.date === todayStr) continue
+    combined.push({ date: p.date, historical: null, projected: p.value })
+  }
+
+  return combined
+}
+
 export function ProjectionChart({
   historicalData,
   projectionData,
@@ -126,38 +179,13 @@ export function ProjectionChart({
     )
   }
 
-  // Build combined data array
-  const combined: CombinedPoint[] = []
-
-  // Historical points
-  for (const h of historicalData) {
-    combined.push({ date: h.date, historical: h.value, projected: null })
-  }
-
-  // Bridge point: last historical connects to first projection
+  const combined = buildCombinedData(historicalData, projectionData)
   const todayStr =
     historicalData.length > 0
       ? historicalData[historicalData.length - 1].date
       : projectionData.length > 0
         ? projectionData[0].date
         : ''
-
-  // If we have both datasets, add a bridge point where both values overlap
-  if (historicalData.length > 0 && projectionData.length > 0) {
-    const lastHistorical = historicalData[historicalData.length - 1]
-    // Replace the last historical point with a bridge point
-    combined[combined.length - 1] = {
-      date: lastHistorical.date,
-      historical: lastHistorical.value,
-      projected: lastHistorical.value,
-    }
-  }
-
-  // Projection points (skip the first one if it's the bridge date)
-  for (const p of projectionData) {
-    if (p.date === todayStr) continue
-    combined.push({ date: p.date, historical: null, projected: p.value })
-  }
 
   const gridStroke = isDark ? '#374151' : '#e5e7eb'
   const historicalStroke = isDark ? '#d1d5db' : '#374151'
